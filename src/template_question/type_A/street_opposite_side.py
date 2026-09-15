@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def side_of_street(street_geom, pt):
@@ -80,6 +81,7 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
     out["rank"] = out.index + 1
     return out
 
+@template("make_question_street_opposite_side")
 def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, max_tries=200):
     """Génère les questions de vis-à-vis « X en face de Y, de l'autre côté de la rue R ».
 
@@ -126,7 +128,7 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             dic_benchmark["query"].append(f"{cat_q} across {street['street_name']} from {poi_y['poi_name']}")
             dic_benchmark["category_query"].append(cat_q)
             dic_benchmark["street_index"].append(street.name)
-            dic_benchmark["street_name"].append(street["name"])
+            dic_benchmark["street_name"].append(street["street_name"])
             dic_benchmark["street_geometry"].append(street.geometry)
             dic_benchmark["poi_y_id"].append(poi_y["poi_id"])
             dic_benchmark["poi_y_name"].append(poi_y["poi_name"])

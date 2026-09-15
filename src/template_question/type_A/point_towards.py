@@ -5,6 +5,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
@@ -63,6 +64,7 @@ def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
     """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "cat": cat, "k": k,
           "half": half_width}).df()
 
+@template("make_question_point_towards")
 def make_question_point_towards(df_osm, half_width=70.0, nb_q=110, seed=42):
     """Génère les questions directionnelles « X près de A en allant vers B ».
 
@@ -82,7 +84,6 @@ def make_question_point_towards(df_osm, half_width=70.0, nb_q=110, seed=42):
     """
     xy = np.column_stack([df_osm.x.values, df_osm.y.values])   # (n, 2)
     tree = cKDTree(xy)
-    print(tree.index)
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()

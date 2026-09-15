@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def near_metric_sql(df, x, y, cat, distance, k=100):
@@ -40,6 +41,7 @@ def near_metric_sql(df, x, y, cat, distance, k=100):
 
     return results
 
+@template("make_question_point_near_metric")
 def make_question_point_near_metric(df_osm, list_distance=[100, 300, 500, 1000], nb_q=110, seed=42):
     """Génère les questions à contrainte métrique « X à moins de D mètres de Y ».
 

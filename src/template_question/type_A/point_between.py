@@ -6,6 +6,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
@@ -68,6 +69,7 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
     """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "cat": cat, "k": k,
           "corr": corridor_m}).df()
 
+@template("make_question_point_between")
 def make_question_point_between(df_osm, corridor_m=200.0, nb_q=110, seed=42):
     """Génère les questions d'entre-deux « X entre A et B ».
 

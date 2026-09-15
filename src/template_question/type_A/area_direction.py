@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def direction_area(pois, geom, direction):
@@ -36,6 +37,7 @@ def direction_area(pois, geom, direction):
     sub["coord"] = sub.geometry.y if direction in "north south" else sub.geometry.x
     return sub.sort_values("coord", ascending=direction in ("south west"))
 
+@template("make_question_area_direction")
 def make_question_area_direction(df_osm, df_area, list_direction=["north", "east", "west", "south"], min_size=1000, nb_q=110, seed=42):
     """Génère les questions de position relative dans une zone « X au nord de Z ».
 
@@ -91,10 +93,10 @@ def make_question_area_direction(df_osm, df_area, list_direction=["north", "east
                     results = direction_area(pois, area.geometry, direction)
                     nq +=1
 
-                    dic_benchmark["query"].append(f"{cat_q} at the {direction} of {area['name_area']}")
+                    dic_benchmark["query"].append(f"{cat_q} at the {direction} of {area['area_name']}")
                     dic_benchmark["category_query"].append(cat_q)
                     dic_benchmark["area_index"].append(area.name)
-                    dic_benchmark["area_name"].append(area["name"])
+                    dic_benchmark["area_name"].append(area["area_name"])
                     dic_benchmark["area_geometry"].append(area.geometry)
                     dic_benchmark["function"].append("direction_area")
                     dic_benchmark["direction"].append(direction)

@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def inside_area(area, category, pois, cat_col="category"):
@@ -36,6 +37,7 @@ def inside_area(area, category, pois, cat_col="category"):
     sel["dist"] = sel.geometry.distance(area)
     return sel.sort_values("dist").reset_index(drop=True)
 
+@template("make_question_area_inside")
 def make_question_area_inside(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
     """Génère les questions d'appartenance « X dans la zone Z ».
 
@@ -58,7 +60,7 @@ def make_question_area_inside(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
     TODO: `results_poi_rank` vaut `list(results.index)` après `reset_index`, donc
         0-based, alors que les générateurs rue sont 1-based.
     TODO: le plafond de 200 tentatives est atteint silencieusement ; journaliser
-    TODO: `area.name` est le label d'index de la Series, `area["name"]` le nom de
+    TODO: `area.name` est le label d'index de la Series, `area["area_name"]` le nom de
         la zone. Les deux sont utilisés à trois lignes d'écart — correct, mais à
         désambiguïser pour la relecture.
     """
@@ -83,10 +85,10 @@ def make_question_area_inside(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
                 results = inside_area(area.geometry, cat_q, pois)
                 nq +=1
 
-                dic_benchmark["query"].append(f"{cat_q} inside {area['name_area']}")
+                dic_benchmark["query"].append(f"{cat_q} inside {area['area_name']}")
                 dic_benchmark["category_query"].append(cat_q)
                 dic_benchmark["area_index"].append(area.name)
-                dic_benchmark["area_name"].append(area["name"])
+                dic_benchmark["area_name"].append(area["area_name"])
                 dic_benchmark["area_geometry"].append(area.geometry)
                 dic_benchmark["function"].append("inside_area")
                 dic_benchmark["results_poi_id"].append(list(results.poi_id))

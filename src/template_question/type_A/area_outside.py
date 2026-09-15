@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def outside_area(area, category, pois, cat_col="category"):
@@ -27,6 +28,7 @@ def outside_area(area, category, pois, cat_col="category"):
     sel["dist"] = sel.geometry.distance(area)
     return sel.sort_values("dist").reset_index(drop=True)
 
+@template("make_question_area_outside")
 def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
     """Génère les questions d'exclusion « X hors de la zone Z ».
 
@@ -66,10 +68,10 @@ def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42
                 results = outside_area(area.geometry, cat_q, pois)
                 nq +=1
 
-                dic_benchmark["query"].append(f"{cat_q} outside {area['name_area']}")
+                dic_benchmark["query"].append(f"{cat_q} outside {area['area_name']}")
                 dic_benchmark["category_query"].append(cat_q)
                 dic_benchmark["area_index"].append(area.name)
-                dic_benchmark["area_name"].append(area["name"])
+                dic_benchmark["area_name"].append(area["area_name"])
                 dic_benchmark["area_geometry"].append(area.geometry)
                 dic_benchmark["function"].append("outside_area")
                 dic_benchmark["results_poi_id"].append(list(results.poi_id))

@@ -126,7 +126,7 @@ def extract_osm_pois(bbox, dic_tags, use_cache=True):
             bbox,
             tags=dic_tags
         )
-        pois.to_parquet(cache_path)
+        #pois.to_parquet(cache_path)
     pois["geometry"] = pois.geometry.centroid
     pois["lat"] = pois.geometry.y
     pois["lon"] = pois.geometry.x
@@ -207,7 +207,3 @@ def extraire_seine(ville: str = "Paris") -> gpd.GeoDataFrame:
     except Exception as e:
         print(f"     Erreur Seine : {e}")
         return None
-
-def get_poi_near_seine(pois_gdf, seine_buffer):
-    pois_gdf["near_seine"] = pois_gdf.geometry.within(seine_buffer)
-    return pois_gdf

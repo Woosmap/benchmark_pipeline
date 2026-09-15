@@ -6,6 +6,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def touching_streets(df_streets, street, tol=1.0):
@@ -53,6 +54,7 @@ def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
     out["rank"] = out.index + 1
     return out
 
+@template("make_question_street_cross")
 def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """Génère les questions de carrefour « X au croisement de R1 et R2 ».
 
@@ -103,5 +105,3 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
 
     return pd.DataFrame(dic_benchmark)
 
-bench4=make_question_crossstreet(df_osm, df_streets)
-print(len(bench4))

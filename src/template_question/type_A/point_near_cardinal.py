@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 CARDINAL_AZ = {
@@ -71,6 +72,7 @@ def cardinal_azimuth_sql(df, x, y, cat, cardinal_dir, k=100,
           "center": center, "half": half_width}).df()
 
 
+@template("make_question_point_near_cardinal")
 def make_question_point_near_cardinal(df_osm, list_direction=["north", "east", "west", "south"], half_width=70.0, nb_q=110, seed=42):
     """Génère les questions de direction cardinale « X au nord de Y ».
 

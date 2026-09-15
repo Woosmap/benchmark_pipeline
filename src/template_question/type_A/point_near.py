@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def near_sql(df, x, y, cat, k=100):
@@ -41,6 +42,7 @@ def near_sql(df, x, y, cat, k=100):
     """, {"x": x, "y": y, "cat": cat, "k": k}).df()
     return results
 
+@template("make_question_point_near")
 def make_question_point_near(df_osm, nb_q=110, seed=42):
     """Génère les questions de proximité simple « X près de Y ».
 

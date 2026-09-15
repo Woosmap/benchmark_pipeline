@@ -1,4 +1,4 @@
-#from src.data_creation.features import *
+from src.features import *
 
 VILLE = "Paris, France"
 OUTPUT_PATH = "pois_paris.parquet"
@@ -19,6 +19,14 @@ FEATURES_OSM = {
     "cafe": ["coworking"],
 }
 
+FEATURES = [CookingType(), OutDoorSeating(), InDoorSeating()]
+
+STREETS_TAGS = {"highway": ["primary", "secondary", "tertiary", "unclassified",
+                    "residential", "pedestrian", "living_street"]}
+
+AREA_TAGS = {"leisure": ["park", "nature_reserve", "garden"],
+        "boundary": "administrative"
+        }
 #FEATURES = [CookingType(), CloseToSubway(), CloseToParc(), OutDoorSeating(), InDoorSeating()]
 
 # Ancres spatiales pour calculer les distances

@@ -4,6 +4,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def border_area(area, category, df_osm, cat_col="category"):
@@ -32,6 +33,7 @@ def border_area(area, category, df_osm, cat_col="category"):
     sel["dist"] = sel.geometry.distance(area)
     return sel.sort_values("dist").reset_index(drop=True)
 
+@template("make_question_area_border")
 def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
     """Génère les questions de bordure « X en limite de la zone Z ».
 
@@ -73,10 +75,10 @@ def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
                 continue
             nq +=1
 
-            dic_benchmark["query"].append(f"{cat_q} at the border of {area['name_area']}")
+            dic_benchmark["query"].append(f"{cat_q} at the border of {area['area_name']}")
             dic_benchmark["category_query"].append(cat_q)
             dic_benchmark["area_index"].append(area.name)
-            dic_benchmark["area_name"].append(area["name"])
+            dic_benchmark["area_name"].append(area["area_name"])
             dic_benchmark["area_geometry"].append(area.geometry)
             dic_benchmark["function"].append("border_area")
             dic_benchmark["results_poi_id"].append(list(results.poi_id))

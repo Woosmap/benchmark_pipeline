@@ -7,6 +7,7 @@ import duckdb
 import pandas as pd
 
 from src.config import *
+from src.template_question.registry import template
 
 
 def along_street(df, street_geom, cat, k=100):
@@ -36,6 +37,7 @@ def along_street(df, street_geom, cat, k=100):
     out["rank"] = out.index + 1
     return out
 
+@template("make_question_street_along")
 def make_question_street_along(df_osm, df_streets, min_length=500, nb_q=110, seed=42):
     """Génère les questions de linéaire « X le long de la rue R ».
 
@@ -75,7 +77,7 @@ def make_question_street_along(df_osm, df_streets, min_length=500, nb_q=110, see
             dic_benchmark["query"].append(f"{cat_q} following {street['street_name']}")
             dic_benchmark["category_query"].append(cat_q)
             dic_benchmark["street_index"].append(id_street)
-            dic_benchmark["street_name"].append(street["name"])
+            dic_benchmark["street_name"].append(street["street_name"])
             dic_benchmark["street_geometry"].append(street.geometry)
             dic_benchmark["function"].append("along_street")
             dic_benchmark["results_poi_id"].append(list(results.poi_id))
