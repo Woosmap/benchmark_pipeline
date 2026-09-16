@@ -30,6 +30,7 @@ from tests.known_defects import (
     IMPORT_ERRORS,
     INCOHERENT_TEMPLATES,
     UNANSWERABLE_TEMPLATES,
+    UNPLOTTABLE_TEMPLATES,
     merge_reasons,
 )
 
@@ -211,7 +212,7 @@ def test_no_unanswerable_questions(template, run_template):
 # compatibilité avec la visualisation
 # --------------------------------------------------------------------------- #
 
-@for_each_template(BROKEN_TEMPLATES, INCOHERENT_TEMPLATES)
+@for_each_template(BROKEN_TEMPLATES, UNPLOTTABLE_TEMPLATES)
 def test_satisfies_plot_question_preconditions(template, run_template, df_osm):
     """Les préconditions vérifiées par `plot_question` sont remplies.
 
@@ -219,6 +220,11 @@ def test_satisfies_plot_question_preconditions(template, run_template, df_osm):
     rangs dupliqués et `poi_id` introuvables (questionA_viz.py:116-131). Un
     benchmark qui ne passe pas ces contrôles n'est pas affichable, donc pas
     relisible à l'œil.
+
+    Marqué depuis `UNPLOTTABLE_TEMPLATES` et non `INCOHERENT_TEMPLATES` : il
+    manque `results_poi_dist` à `area_direction`, dont `plot_question` n'a pas
+    besoin. Le marquer ici le ferait XPASS et échouer la suite pour un défaut
+    qu'il n'a pas.
     """
     bench = run_template(template)
     geo_index = df_osm.set_index("poi_id").index
