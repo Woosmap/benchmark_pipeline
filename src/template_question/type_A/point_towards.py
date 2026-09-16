@@ -1,5 +1,8 @@
 from scipy.spatial import cKDTree
 import numpy as np
+from itertools import product
+
+from src.template_question.ratio import allocate
 from collections import defaultdict
 import duckdb
 import pandas as pd
@@ -65,7 +68,7 @@ def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
           "half": half_width}).df()
 
 @template("make_question_point_towards")
-def make_question_point_towards(df_osm, half_width=70.0, nb_q=110, seed=42):
+def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, seed=42):
     """Génère les questions directionnelles « X près de A en allant vers B ».
 
     Pour chaque ancre A, tire un second POI B parmi ceux situés à moins de 1 000 m,
@@ -74,7 +77,7 @@ def make_question_point_towards(df_osm, half_width=70.0, nb_q=110, seed=42):
     Args:
         df_osm (GeoDataFrame): POIs servant d'ancres, de points B et de cibles.
         half_width (float): Demi-ouverture du cône, en degrés.
-        nb_q (int): Nombre de questions visé, stratifié par catégorie d'ancre.
+        nb_q (int): Nombre de questions visé, stratifié par catégorie interrogée.
         seed (int): Graine du générateur aléatoire.
 
     Returns:
@@ -87,16 +90,17 @@ def make_question_point_towards(df_osm, half_width=70.0, nb_q=110, seed=42):
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
-    pid = df_osm["poi_id"].to_numpy()  
-    for cat_anc in list_cat:
-        sub = df_osm[df_osm['category'] == cat_anc]
-        anchors = sub.sample(n=min(n_queries_per_stratum, len(sub)), random_state=rng)
-        for anchor in anchors.itertuples():
+    # Une strate par catégorie d'ancre ; le produit cartésien avec `list_cat`
+    # équilibre du même coup les catégories interrogées.
+    balance = allocate(nb_q // len(list_cat), ratio or {cat: 1 for cat in list_cat})
+    pid = df_osm["poi_id"].to_numpy()
+    for cat_anc, nb_q_anc in balance.items():
+        anchors = df_osm[df_osm["category"] == cat_anc]
+        anchors = anchors.sample(n=min(nb_q_anc, len(anchors)), random_state=rng)
+        for cat_q, anchor in product(list_cat, anchors.itertuples()):
             index_b = rng.choice([k for k in tree.query_ball_point([anchor.x, anchor.y], 1000)
                                             if pid[k] != anchor.poi_id])
             point_b = df_osm.iloc[index_b]
-            cat_q = rng.choice(list_cat)
             
             results = towards_b_sql(df_osm, anchor.x, anchor.y, point_b.x, point_b.y, cat_q, half_width=half_width)
             if cat_anc == cat_q:

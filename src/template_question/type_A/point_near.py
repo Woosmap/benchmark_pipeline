@@ -1,4 +1,7 @@
 import numpy as np
+from itertools import product
+
+from src.template_question.ratio import allocate
 from collections import defaultdict
 import duckdb
 import pandas as pd
@@ -43,7 +46,7 @@ def near_sql(df, x, y, cat, k=100):
     return results
 
 @template("make_question_point_near")
-def make_question_point_near(df_osm, nb_q=110, seed=42):
+def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
     """Génère les questions de proximité simple « X près de Y ».
 
     Pour chaque catégorie d'ancre, tire un quota d'ancres puis, pour chacune, une
@@ -53,7 +56,7 @@ def make_question_point_near(df_osm, nb_q=110, seed=42):
 
     Args:
         df_osm (GeoDataFrame): POIs servant à la fois d'ancres et de cibles.
-        nb_q (int): Nombre total de questions visé, stratifié par catégorie d'ancre.
+        nb_q (int): Nombre total de questions visé, stratifié par catégorie interrogée.
         seed (int): Graine du générateur aléatoire.
 
     Returns:
@@ -68,12 +71,14 @@ def make_question_point_near(df_osm, nb_q=110, seed=42):
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
-    for cat_anc in list_cat:
-        sub = df_osm[df_osm['category'] == cat_anc]
-        anchors = sub.sample(n=min(n_queries_per_stratum, len(sub)), random_state=rng)
-        for anchor in anchors.itertuples():
-            cat_q = rng.choice(list_cat)
+    # Une strate par catégorie d'ancre ; le produit cartésien avec `list_cat`
+    # équilibre du même coup les catégories interrogées. Le quota est divisé par
+    # len(list_cat) parce que chaque ancre engendre une question par cat_q.
+    balance = allocate(nb_q // len(list_cat), ratio or {cat: 1 for cat in list_cat})
+    for cat_anc, nb_q_anc in balance.items():
+        anchors = df_osm[df_osm["category"] == cat_anc]
+        anchors = anchors.sample(n=min(nb_q_anc, len(anchors)), random_state=rng)
+        for cat_q, anchor in product(list_cat, anchors.itertuples()):
             results = near_sql(df_osm, anchor.x, anchor.y, cat_q)
             if cat_anc == cat_q:
                 results = results[results["poi_id"] != anchor.poi_id]

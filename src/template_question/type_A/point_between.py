@@ -7,6 +7,7 @@ import pandas as pd
 
 from src.config import *
 from src.template_question.registry import template
+from src.template_question.ratio import allocate
 
 
 def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
@@ -70,7 +71,7 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
           "corr": corridor_m}).df()
 
 @template("make_question_point_between")
-def make_question_point_between(df_osm, corridor_m=200.0, nb_q=110, seed=42):
+def make_question_point_between(df_osm, ratio_cat_q=None, corridor_m=200.0, nb_q=110, seed=42, max_try=200):
     """Génère les questions d'entre-deux « X entre A et B ».
 
     Même tirage du point B que `make_question_towardsb` : un POI à moins de
@@ -88,44 +89,62 @@ def make_question_point_between(df_osm, corridor_m=200.0, nb_q=110, seed=42):
             `make_question_towardsb`, la distance rapportée étant l'écart latéral.
 
     """
+    list_cat = df_osm["category"].unique()
+    if ratio_cat_q:
+        balance = allocate(nb_q, ratio_cat_q)
+    else: balance = allocate(nb_q, {cat: 1 for cat in list_cat})
+
     xy = np.column_stack([df_osm.x.values, df_osm.y.values])   # (n, 2)
     tree = cKDTree(xy)
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
-    list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
+  
     pid = df_osm["poi_id"].to_numpy()  
-    for cat_anc in list_cat:
-        sub = df_osm[df_osm['category'] == cat_anc]
-        anchors = sub.sample(n=min(n_queries_per_stratum, len(sub)), random_state=rng)
-        for anchor in anchors.itertuples():
+    for cat_q, nb_q_cat in balance.items():
+        n=0
+        nb_try = 0
+        while n < nb_q_cat and nb_try < max_try:
+            poi_answer = df_osm[df_osm['category'] == cat_q].sample(1, random_state=rng).iloc[0]
+            for cat_anc in list_cat:
+                #sub = df_osm[df_osm['category'] == cat_anc]
+                id_anchor_a = rng.choice([k for k in tree.query_ball_point([poi_answer.x, poi_answer.y], 1000)
+                                        if pid[k] != poi_answer.poi_id])
+                anchor_a = df_osm.iloc[id_anchor_a]
 
-            index_b = rng.choice([k for k in tree.query_ball_point([anchor.x, anchor.y], 1000)
-                                if pid[k] != anchor.poi_id])
-            point_b = df_osm.iloc[index_b]
-            cat_q = rng.choice(list_cat)
-            
-            results = between_ab_sql(df_osm, anchor.x, anchor.y, point_b.x, point_b.y, cat_q, corridor_m=corridor_m)
-            if cat_anc == cat_q:
-                results = results[results["poi_id"] != anchor.poi_id]
-            if cat_q == point_b.category:
-                results = results[results["poi_id"] != point_b.poi_id]
+                x_b, y_b = -(anchor_a.geometry.x - 2*poi_answer.geometry.x), -(anchor_a.geometry.y - 2*poi_answer.geometry.y)
+                list_id_anchor_b = [k for k in tree.query_ball_point([x_b, y_b], 400) if pid[k] != anchor_a.poi_id]
+                if len(list_id_anchor_b) > 0:
+                    id_anchors_b = rng.choice(list_id_anchor_b)
+                anchor_b = df_osm.iloc[id_anchors_b]   
 
-            dic_benchmark["query"].append(f"{cat_q} between {anchor.poi_name} and {point_b.poi_name}")
-            dic_benchmark["anchor_index"].append(anchor.poi_id)
-            dic_benchmark["anchor_name"].append(anchor.poi_name)
-            dic_benchmark["anchor_category"].append(anchor.category)
-            dic_benchmark["anchor_x"].append(anchor.x)
-            dic_benchmark["anchor_y"].append(anchor.y)
-            dic_benchmark["point_b_index"].append(point_b.poi_id)
-            dic_benchmark["point_b_name"].append(point_b.poi_name)
-            dic_benchmark["point_b_category"].append(point_b.category)
-            dic_benchmark["point_b_x"].append(point_b.x)
-            dic_benchmark["point_b_y"].append(point_b.y)
-            dic_benchmark["category_query"].append(cat_q)
-            dic_benchmark["same_cat"].append(cat_anc==cat_q)
-            dic_benchmark["function"].append("between_ab_sql")
-            dic_benchmark["results_poi_id"].append(list(results.poi_id))
-            dic_benchmark["results_poi_name"].append(list(results.poi_name))
+                results = between_ab_sql(df_osm, anchor_a.x, anchor_a.y, anchor_b.x, anchor_b.y, cat_q, corridor_m=corridor_m)
+                if len(results) >0:
+                    if cat_anc == cat_q:
+                        results = results[results["poi_id"] != anchor_a.poi_id]
+                    if cat_q == anchor_b.category:
+                        results = results[results["poi_id"] != anchor_b.poi_id]
+
+                    dic_benchmark["query"].append(f"{cat_q} between {anchor_a.poi_name} and {anchor_b.poi_name}")
+                    dic_benchmark["anchor_a_index"].append(anchor_a.poi_id)
+                    dic_benchmark["anchor_a_name"].append(anchor_a.poi_name)
+                    dic_benchmark["anchor_a_category"].append(anchor_a.category)
+                    dic_benchmark["anchor_a_x"].append(anchor_a.x)
+                    dic_benchmark["anchor_a_y"].append(anchor_a.y)
+                    dic_benchmark["anchor_b_index"].append(anchor_b.poi_id)
+                    dic_benchmark["anchor_b_name"].append(anchor_b.poi_name)
+                    dic_benchmark["anchor_b_category"].append(anchor_b.category)
+                    dic_benchmark["anchor_b_x"].append(anchor_b.x)
+                    dic_benchmark["anchor_b_y"].append(anchor_b.y)
+                    dic_benchmark["category_query"].append(cat_q)
+                    dic_benchmark["same_cat"].append(cat_anc==cat_q)
+                    dic_benchmark["function"].append("between_ab_sql")
+                    dic_benchmark["results_poi_id"].append(list(results.poi_id))
+                    dic_benchmark["results_poi_name"].append(list(results.poi_name))
+                    dic_benchmark["results_poi_dist"].append(list(results.cross_m))
+                    dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
+                    n += 1
+                    if n > nb_q_cat:
+                        break
+                else: nb_try += 1
 
     return pd.DataFrame(dic_benchmark)

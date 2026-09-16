@@ -5,6 +5,7 @@ import pandas as pd
 
 from src.config import *
 from src.template_question.registry import template
+from src.template_question.ratio import allocate
 
 
 CARDINAL_AZ = {
@@ -73,7 +74,7 @@ def cardinal_azimuth_sql(df, x, y, cat, cardinal_dir, k=100,
 
 
 @template("make_question_point_near_cardinal")
-def make_question_point_near_cardinal(df_osm, list_direction=["north", "east", "west", "south"], half_width=70.0, nb_q=110, seed=42):
+def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=["north", "east", "west", "south"], half_width=70.0, nb_q=110, nb_card_dir=4, seed=42):
     """Génère les questions de direction cardinale « X au nord de Y ».
 
     Décline chaque ancre tirée sur les quatre directions demandées.
@@ -82,7 +83,7 @@ def make_question_point_near_cardinal(df_osm, list_direction=["north", "east", "
         df_osm (GeoDataFrame): POIs servant d'ancres et de cibles.
         list_direction (list[str]): Directions à décliner, clés de `CARDINAL_AZ`.
         half_width (float): Demi-ouverture du secteur, en degrés.
-        nb_q (int): Nombre d'ancres visé, stratifié par catégorie.
+        nb_q (int): Nombre de questions visé, stratifié par catégorie interrogée.
         seed (int): Graine du générateur aléatoire.
 
     Returns:
@@ -98,30 +99,32 @@ def make_question_point_near_cardinal(df_osm, list_direction=["north", "east", "
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
-    for cat_anc in list_cat:
-        sub = df_osm[df_osm['category'] == cat_anc]
-        anchors = sub.sample(n=min(n_queries_per_stratum, len(sub)), random_state=rng)
-        for anchor in anchors.itertuples():
-            cat_q = rng.choice(list_cat)
-            for d in list_direction:
-                results = cardinal_azimuth_sql(df_osm, anchor.x, anchor.y, cat_q, cardinal_dir=d, half_width=half_width)
-                if cat_anc == cat_q:
-                    results = results[results["poi_id"] != anchor.poi_id]
+    if not ratio:
+        balance = allocate(nb_q, {cat: 1 for cat in list_cat})
+    else: balance = allocate(nb_q, ratio)
+    for cat_anc, nb_q_anc in balance.items():
+        anchors = df_osm[df_osm["category"]==cat_anc]
+        anchors = anchors.sample(n=min(nb_q_anc/nb_card_dir, len(anchors)), random_state=rng)
+        for cat_q in list_cat:
+            for anchor in anchors.itertuples():
+                for d in list_direction:
+                    results = cardinal_azimuth_sql(df_osm, anchor.x, anchor.y, cat_q, cardinal_dir=d, half_width=half_width)
+                    if cat_anc == cat_q:
+                        results = results[results["poi_id"] != anchor.poi_id]
 
-                dic_benchmark["query"].append(f"{cat_q} to the {d} of {anchor.poi_name}")
-                dic_benchmark["anchor_index"].append(anchor.poi_id)
-                dic_benchmark["anchor_name"].append(anchor.poi_name)
-                dic_benchmark["anchor_category"].append(anchor.category)
-                dic_benchmark["anchor_x"].append(anchor.x)
-                dic_benchmark["anchor_y"].append(anchor.y)
-                dic_benchmark["category_query"].append(cat_q)
-                dic_benchmark["same_cat"].append(cat_anc==cat_q)
-                dic_benchmark["direction"].append(d)
-                dic_benchmark["function"].append("cardinal_azimuth_sql")
-                dic_benchmark["results_poi_id"].append(list(results.poi_id))
-                dic_benchmark["results_poi_name"].append(list(results.poi_name))
-                dic_benchmark["results_poi_dist"].append(list(results.dist))
-                dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
+                    dic_benchmark["query"].append(f"{cat_q} to the {d} of {anchor.poi_name}")
+                    dic_benchmark["anchor_index"].append(anchor.poi_id)
+                    dic_benchmark["anchor_name"].append(anchor.poi_name)
+                    dic_benchmark["anchor_category"].append(anchor.category)
+                    dic_benchmark["anchor_x"].append(anchor.x)
+                    dic_benchmark["anchor_y"].append(anchor.y)
+                    dic_benchmark["category_query"].append(cat_q)
+                    dic_benchmark["same_cat"].append(cat_anc==cat_q)
+                    dic_benchmark["direction"].append(d)
+                    dic_benchmark["function"].append("cardinal_azimuth_sql")
+                    dic_benchmark["results_poi_id"].append(list(results.poi_id))
+                    dic_benchmark["results_poi_name"].append(list(results.poi_name))
+                    dic_benchmark["results_poi_dist"].append(list(results.dist))
+                    dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
 
     return pd.DataFrame(dic_benchmark)

@@ -1,4 +1,7 @@
 import numpy as np
+from itertools import product
+
+from src.template_question.ratio import allocate
 from collections import defaultdict
 import duckdb
 import pandas as pd
@@ -42,7 +45,7 @@ def near_metric_sql(df, x, y, cat, distance, k=100):
     return results
 
 @template("make_question_point_near_metric")
-def make_question_point_near_metric(df_osm, list_distance=[100, 300, 500, 1000], nb_q=110, seed=42):
+def make_question_point_near_metric(df_osm, ratio=None, list_distance=[100, 300, 500, 1000], nb_q=110, seed=42):
     """Génère les questions à contrainte métrique « X à moins de D mètres de Y ».
 
     Reprend l'échantillonnage stratifié de `make_question_nearsql` et décline
@@ -51,7 +54,7 @@ def make_question_point_near_metric(df_osm, list_distance=[100, 300, 500, 1000],
     Args:
         df_osm (GeoDataFrame): POIs servant d'ancres et de cibles.
         list_distance (list[float]): Rayons à décliner, en mètres.
-        nb_q (int): Nombre d'ancres visé, stratifié par catégorie.
+        nb_q (int): Nombre de questions visé, stratifié par catégorie interrogée.
         seed (int): Graine du générateur aléatoire.
 
     Returns:
@@ -62,12 +65,16 @@ def make_question_point_near_metric(df_osm, list_distance=[100, 300, 500, 1000],
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // (len(list_cat)+len(list_distance))
-    for cat_anc in list_cat:
-        sub = df_osm[df_osm['category'] == cat_anc]
-        anchors = sub.sample(n=min(n_queries_per_stratum, len(sub)), random_state=rng)
-        for anchor in anchors.itertuples():
-            cat_q = rng.choice(list_cat)
+    # Une strate par catégorie d'ancre ; le produit cartésien avec `list_cat`
+    # équilibre du même coup les catégories interrogées. Le quota est divisé par
+    # le *produit* catégories × distances, puisque la boucle interne parcourt ce
+    # produit — c'était l'erreur de `nb_q // (len(list_cat) + len(list_distance))`.
+    balance = allocate(nb_q // (len(list_cat) * len(list_distance)),
+                       ratio or {cat: 1 for cat in list_cat})
+    for cat_anc, nb_q_anc in balance.items():
+        anchors = df_osm[df_osm["category"] == cat_anc]
+        anchors = anchors.sample(n=min(nb_q_anc, len(anchors)), random_state=rng)
+        for cat_q, anchor in product(list_cat, anchors.itertuples()):
             for d in list_distance:
                 results = near_metric_sql(df_osm, anchor.x, anchor.y, cat_q, distance=d)
                 if cat_anc == cat_q:
