@@ -94,7 +94,7 @@ class Template:
         return f"Template({self.name})"
 
 
-_PKG = "src.template_question.type_A"
+_PKG = "src.template_question.geospatial"
 
 _ANCHOR_COLS = ("anchor_index", "anchor_name", "anchor_category",
                 "anchor_x", "anchor_y", "same_cat")
