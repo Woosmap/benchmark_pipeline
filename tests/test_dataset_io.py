@@ -27,7 +27,7 @@ from shapely.geometry import LineString, Point, box  # noqa: E402
 @pytest.fixture(scope="module")
 def bench(df_osm):
     """Un vrai benchmark, produit par le seul template aujourd'hui sain."""
-    from src.template_question.type_A.point_near import make_question_point_near
+    from src.template_question.geospatial.point_near import make_question_point_near
 
     return make_question_point_near(df_osm, nb_q=10, seed=42)
 
@@ -258,7 +258,7 @@ def test_save_refuses_to_overwrite_by_default(bench, tmp_path, df_osm):
 
 def test_save_creates_missing_directories(bench, tmp_path, df_osm):
     """Le projet n'a pas de dossier `data/` : il doit être créé au besoin."""
-    path = save_benchmark(bench, tmp_path / "data" / "benchmarks" / "type_A" / "b",
+    path = save_benchmark(bench, tmp_path / "data" / "benchmarks" / "geospatial" / "b",
                           df_osm=df_osm)
     assert path.exists()
     assert path.suffix == ".parquet", "l'extension doit être ajoutée si absente"
@@ -287,6 +287,15 @@ def test_load_suite_reports_a_missing_directory(tmp_path):
 # le registre des templates reste aligné sur le code
 # --------------------------------------------------------------------------- #
 
+#: Modules de `geospatial/` qui ne sont pas des templates de question et n'ont donc
+#: rien à faire dans le registre. `make_question_geo` est un combinateur encore
+#: en chantier — il croise features et questions géo — et ne suit pas le contrat
+#: `make_question_*(df, …, nb_q, seed) -> DataFrame`. Le recenser ici plutôt que
+#: de relâcher le test garde la garantie : tout *autre* module ajouté à `geospatial/`
+#: fera échouer `test_every_template_module_is_in_the_registry`.
+NON_TEMPLATE_MODULES = {"make_question_geo"}
+
+
 def test_registry_matches_the_modules_on_disk():
     """Chaque entrée du registre désigne un module et un générateur réels.
 
@@ -301,19 +310,10 @@ def test_registry_matches_the_modules_on_disk():
 
     for template in TEMPLATE_REGISTRY:
         module_path = pathlib.Path(
-            "src/template_question/type_A") / f"{template.name}.py"
+            "src/template_question/geospatial") / f"{template.name}.py"
         assert module_path.exists(), f"{module_path} est introuvable"
 
-        # street_cross ne s'importe pas (défaut connu) : on se contente alors
-        # de vérifier que la fonction est bien définie dans le fichier.
-        try:
-            module = importlib.import_module(template.module)
-        except Exception:
-            source = module_path.read_text(encoding="utf-8")
-            assert f"def {template.generator}(" in source, (
-                f"{template.generator} absent de {module_path}"
-            )
-            continue
+        module = importlib.import_module(template.module)
         assert callable(getattr(module, template.generator, None)), (
             f"{template.generator} absent de {template.module}"
         )
@@ -324,11 +324,62 @@ def test_every_template_module_is_in_the_registry():
     import pathlib
 
     on_disk = {
-        p.stem for p in pathlib.Path("src/template_question/type_A").glob("*.py")
+        p.stem for p in pathlib.Path("src/template_question/geospatial").glob("*.py")
         if not p.stem.startswith("_")
-    }
+    } - NON_TEMPLATE_MODULES
     assert on_disk == set(TEMPLATES_BY_NAME), (
         f"registre et disque divergent : "
         f"seulement sur disque {sorted(on_disk - set(TEMPLATES_BY_NAME))}, "
         f"seulement au registre {sorted(set(TEMPLATES_BY_NAME) - on_disk)}"
     )
+
+
+def test_the_two_registries_describe_the_same_templates():
+    """Le registre par décorateur et celui du schéma ne doivent pas diverger.
+
+    Le projet en tient deux : `registry.REGISTRY`, peuplé à l'import par le
+    décorateur `@template` de chaque module, et `schema.TEMPLATE_REGISTRY`,
+    écrit à la main parce qu'il porte en plus les colonnes de contexte et le
+    libellé attendu dans l'énoncé. Ils sont indexés différemment — le premier
+    par nom de fonction, le second par nom court — ce qui rend la divergence
+    invisible à l'œil.
+
+    Un template décoré mais absent du schéma échappe à toute la suite ; l'
+    inverse ferait échouer la paramétrisation. Ce test est le seul endroit qui
+    les confronte.
+    """
+    import src.template_question.geospatial  # noqa: F401 — peuple REGISTRY
+    from src.template_question.registry import REGISTRY
+
+    decorated = set(REGISTRY)
+    declared = {t.generator for t in TEMPLATES_BY_NAME.values()}
+
+    assert decorated == declared, (
+        f"les deux registres divergent : décorés mais absents du schéma "
+        f"{sorted(decorated - declared)}, déclarés au schéma mais non décorés "
+        f"{sorted(declared - decorated)}"
+    )
+
+
+def test_registry_generators_share_the_nb_q_and_seed_contract():
+    """Tout générateur accepte `nb_q` et `seed` en mot-clé.
+
+    C'est le contrat sur lequel reposent `run_template` et l'enregistrement en
+    lot : appeler un générateur sans savoir lequel c'est. Les signatures
+    diffèrent par ailleurs — `list_direction`, `min_size`, `corridor_m`,
+    `ratio_cat_q` — mais ces deux-là doivent rester communs, sinon le lot ne
+    peut plus être produit d'un seul appel paramétré.
+    """
+    import importlib
+    import inspect
+
+    from src.template_question.schema import TEMPLATE_REGISTRY
+
+    for template in TEMPLATE_REGISTRY:
+        module = importlib.import_module(template.module)
+        params = inspect.signature(getattr(module, template.generator)).parameters
+        missing = [p for p in ("nb_q", "seed") if p not in params]
+        assert not missing, (
+            f"{template.generator} n'accepte pas {missing} : le lot ne peut "
+            f"pas être produit par un appel uniforme"
+        )

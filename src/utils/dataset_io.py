@@ -1,6 +1,6 @@
 """Enregistrement et relecture des benchmarks de questions.
 
-Un benchmark tel que produit par `src.template_question.type_A.make_question_*`
+Un benchmark tel que produit par `src.template_question.geospatial.make_question_*`
 ne passe pas tel quel dans un parquet : il mélange des colonnes-listes
 (`results_poi_id`…) et des géométries shapely dans des colonnes objet
 (`area_geometry`, `street_geometry`…). Les géométries sont donc encodées en WKB à
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 
 #: Emplacement par défaut des benchmarks produits. Le projet n'a pas de dossier
 #: `data/` : il est créé au besoin.
-DEFAULT_OUTDIR = Path("data/benchmarks/type_A")
+DEFAULT_OUTDIR = Path("data/benchmarks/geospatial")
 
 #: Version du format sur disque. À incrémenter si l'encodage change, pour que la
 #: lecture puisse refuser un fichier qu'elle ne sait pas interpréter.

@@ -132,7 +132,7 @@ def test_point_near_cardinal_stays_in_its_sector(run_template, df_osm):
     forme tout en plaçant « nord » à l'est.
     """
     bench = bench_of("point_near_cardinal", run_template)
-    from src.template_question.type_A.point_near_cardinal import CARDINAL_AZ
+    from src.template_question.geospatial.point_near_cardinal import CARDINAL_AZ
 
     half_width = 70.0            # défaut du générateur
     geo = df_osm.set_index("poi_id")
@@ -378,13 +378,19 @@ def test_street_along_measures_distance_to_the_street(run_template, df_osm):
         )
 
 
-@oracle_for("street_cross", BROKEN_TEMPLATES,
-            {"street_cross": SEMANTIC_DEFECTS["street_cross_intersection_vide"]})
+@oracle_for("street_cross", BROKEN_TEMPLATES)
 def test_street_cross_measures_distance_to_the_junction(run_template, df_osm):
     """« X au croisement de A et B » : les rues se croisent, et on mesure là.
 
     Si l'intersection est vide — ce que `touching_streets(tol=1.0)` autorise —
     `distance()` renvoie NaN et la vérité terrain n'est plus ordonnée du tout.
+
+    Le test passe sur ces fixtures, qui n'offrent qu'un croisement franc : le
+    défaut de `touching_streets` existe bien, mais il ne se manifeste pas dans
+    le benchmark produit ici. Il est démontré là où il vit, sur la fonction
+    elle-même, par `test_touching_streets_only_returns_real_crossings`. Le
+    marquer xfail ici serait doublement faux — un XPASS(strict), et un motif qui
+    désignerait le mauvais coupable.
     """
     bench = bench_of("street_cross", run_template)
     geo = df_osm.set_index("poi_id")
@@ -414,7 +420,7 @@ def test_street_opposite_side_is_really_on_the_other_side(run_template, df_osm,
     produit vectoriel ici ne testerait que ma propre réimplémentation. En
     revanche les deux seuils (40 m à la rue, 80 m le long) sont recalculés.
     """
-    from src.template_question.type_A.street_opposite_side import side_of_street
+    from src.template_question.geospatial.street_opposite_side import side_of_street
 
     bench = bench_of("street_opposite_side", run_template)
     geo = df_osm.set_index("poi_id")
