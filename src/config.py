@@ -1,4 +1,4 @@
-from src.features import *
+from generator.features import *
 
 VILLE = "Paris, France"
 OUTPUT_PATH = "pois_paris.parquet"
@@ -19,7 +19,8 @@ FEATURES_OSM = {
     "cafe": ["coworking"],
 }
 
-FEATURES = [CookingType(), OutDoorSeating(), InDoorSeating()]
+FEATURES = [Category(), CookingType(), OutDoorSeating(), InDoorSeating()]
+
 
 STREETS_TAGS = {"highway": ["primary", "secondary", "tertiary", "unclassified",
                     "residential", "pedestrian", "living_street"]}
@@ -27,7 +28,8 @@ STREETS_TAGS = {"highway": ["primary", "secondary", "tertiary", "unclassified",
 AREA_TAGS = {"leisure": ["park", "nature_reserve", "garden"],
         "boundary": "administrative"
         }
-#FEATURES = [CookingType(), CloseToSubway(), CloseToParc(), OutDoorSeating(), InDoorSeating()]
+
+CATEGORY_TAGS = ["amenity", "shop", "tourism", "leisure", "station", "public_transport", "railway"]
 
 # Ancres spatiales pour calculer les distances
 ANCRES = {
@@ -39,3 +41,5 @@ BBOX = (2.24, 48.8, 2.41, 48.9)
 BBOX_TEST = (2.346, 48.853, 2.362, 48.862)
 BBOX_OUEST = (2.24, 48.8156, 2.3470, 48.9022)
 BBOX_EST   = (2.3470, 48.8156, 2.41, 48.9022)
+
+NAME_TAGS = ["poi_name", "name", "name:fr", "brand", "operator", "alt_name"]

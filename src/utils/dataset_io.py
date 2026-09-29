@@ -1,6 +1,6 @@
 """Enregistrement et relecture des benchmarks de questions.
 
-Un benchmark tel que produit par `src.template_question.geospatial.make_question_*`
+Un benchmark tel que produit par `benchmark_generator.template_question.geospatial.make_question_*`
 ne passe pas tel quel dans un parquet : il mélange des colonnes-listes
 (`results_poi_id`…) et des géométries shapely dans des colonnes objet
 (`area_geometry`, `street_geometry`…). Les géométries sont donc encodées en WKB à
@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 from shapely import from_wkb, to_wkb
 
-from src.template_question.schema import (
+from generator.template_question.schema import (
     GEOMETRY_COLUMNS,
     RESULT_LIST_COLUMNS,
     validate_benchmark,
