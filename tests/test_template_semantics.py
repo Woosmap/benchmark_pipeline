@@ -14,7 +14,7 @@ tournera.
 import numpy as np
 import pytest
 
-from src.template_question.schema import TEMPLATES_BY_NAME, _as_list
+from generator.template_question.schema import TEMPLATES_BY_NAME, _as_list
 from tests.conftest import angular_gap_deg, azimuth_deg
 from tests.known_defects import BROKEN_TEMPLATES, SEMANTIC_DEFECTS, merge_reasons
 
@@ -132,7 +132,7 @@ def test_point_near_cardinal_stays_in_its_sector(run_template, df_osm):
     forme tout en plaçant « nord » à l'est.
     """
     bench = bench_of("point_near_cardinal", run_template)
-    from src.template_question.geospatial.point_near_cardinal import CARDINAL_AZ
+    from generator.template_question.geospatial.point_near_cardinal import CARDINAL_AZ
 
     half_width = 70.0            # défaut du générateur
     geo = df_osm.set_index("poi_id")
@@ -420,7 +420,7 @@ def test_street_opposite_side_is_really_on_the_other_side(run_template, df_osm,
     produit vectoriel ici ne testerait que ma propre réimplémentation. En
     revanche les deux seuils (40 m à la rue, 80 m le long) sont recalculés.
     """
-    from src.template_question.geospatial.street_opposite_side import side_of_street
+    from generator.template_question.geospatial.street_opposite_side import side_of_street
 
     bench = bench_of("street_opposite_side", run_template)
     geo = df_osm.set_index("poi_id")

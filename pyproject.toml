@@ -1,0 +1,34 @@
+[project]
+name = "benchmark_pipeline"
+version = "0.1.0"
+description = "Generation de questions geospatiales a partir de donnees OpenStreetMap"
+requires-python = ">=3.11"
+
+# Librairies utilisees dans src/
+dependencies = [
+    "pandas",
+    "numpy",
+    "pyarrow",
+    "duckdb>=1.0",       # requetes spatiales (extension spatial)
+    "geopandas>=1.0",
+    "shapely>=2.0",
+    "pyproj",
+    "osmnx>=2.0",        # l'API a change en v2, ne pas descendre en dessous
+    "scipy",
+    "matplotlib",
+    "contextily",        # fonds de carte dans src/dataviz_tools
+    "sentence-transformers",  # similarite semantique dans data_cleaning
+]
+
+# Installation : pip install -e ".[dev]"
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

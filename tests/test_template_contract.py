@@ -17,7 +17,7 @@ import importlib
 import pandas as pd
 import pytest
 
-from src.template_question.schema import (
+from generator.template_question.schema import (
     BENCHMARK_CORE_COLUMNS,
     REQUIRED_RESULT_COLUMNS,
     RESULT_LIST_COLUMNS,

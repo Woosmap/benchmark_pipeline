@@ -11,8 +11,8 @@ import json
 import pandas as pd
 import pytest
 
-from src.template_question.schema import TEMPLATES_BY_NAME
-from src.utils.dataset_io import (
+from generator.template_question.schema import TEMPLATES_BY_NAME
+from utils.dataset_io import (
     FORMAT_VERSION,
     load_benchmark,
     load_benchmark_suite,
@@ -27,7 +27,7 @@ from shapely.geometry import LineString, Point, box  # noqa: E402
 @pytest.fixture(scope="module")
 def bench(df_osm):
     """Un vrai benchmark, produit par le seul template aujourd'hui sain."""
-    from src.template_question.geospatial.point_near import make_question_point_near
+    from generator.template_question.geospatial.point_near import make_question_point_near
 
     return make_question_point_near(df_osm, nb_q=10, seed=42)
 
@@ -116,7 +116,7 @@ def test_loaded_benchmark_is_still_plottable(bench, tmp_path, df_osm):
     invisibles.
     """
     pytest.importorskip("matplotlib")
-    from src.template_question.schema import validate_benchmark
+    from generator.template_question.schema import validate_benchmark
 
     path = save_benchmark(bench, tmp_path / "b.parquet", df_osm=df_osm)
     back = load_benchmark(path)
@@ -306,11 +306,11 @@ def test_registry_matches_the_modules_on_disk():
     import importlib
     import pathlib
 
-    from src.template_question.schema import TEMPLATE_REGISTRY
+    from generator.template_question.schema import TEMPLATE_REGISTRY
 
     for template in TEMPLATE_REGISTRY:
         module_path = pathlib.Path(
-            "src/template_question/geospatial") / f"{template.name}.py"
+            "src/benchmark_generator/template_question/geospatial") / f"{template.name}.py"
         assert module_path.exists(), f"{module_path} est introuvable"
 
         module = importlib.import_module(template.module)
@@ -324,7 +324,7 @@ def test_every_template_module_is_in_the_registry():
     import pathlib
 
     on_disk = {
-        p.stem for p in pathlib.Path("src/template_question/geospatial").glob("*.py")
+        p.stem for p in pathlib.Path("src/benchmark_generator/template_question/geospatial").glob("*.py")
         if not p.stem.startswith("_")
     } - NON_TEMPLATE_MODULES
     assert on_disk == set(TEMPLATES_BY_NAME), (
@@ -348,8 +348,8 @@ def test_the_two_registries_describe_the_same_templates():
     inverse ferait échouer la paramétrisation. Ce test est le seul endroit qui
     les confronte.
     """
-    import src.template_question.geospatial  # noqa: F401 — peuple REGISTRY
-    from src.template_question.registry import REGISTRY
+    import generator.template_question.geospatial  # noqa: F401 — peuple REGISTRY
+    from generator.template_question.registry import REGISTRY
 
     decorated = set(REGISTRY)
     declared = {t.generator for t in TEMPLATES_BY_NAME.values()}
@@ -373,7 +373,7 @@ def test_registry_generators_share_the_nb_q_and_seed_contract():
     import importlib
     import inspect
 
-    from src.template_question.schema import TEMPLATE_REGISTRY
+    from generator.template_question.schema import TEMPLATE_REGISTRY
 
     for template in TEMPLATE_REGISTRY:
         module = importlib.import_module(template.module)

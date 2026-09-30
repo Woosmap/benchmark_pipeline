@@ -45,17 +45,6 @@ def generate_question(poi, n_features, features=FEATURES):
         Le nombre de fragments peut dépasser `len(features)` : une feature
         multi-valuée rend une liste, aplatie par `extend`. C'est pourquoi la
         garde porte sur `len(available)` et non sur `len(features)`.
-
-    TODO: la fonction rend **toutes** les combinaisons, mais son seul appelant
-        n'en garde que la première (`question[0]`). Le reste du travail est
-        jeté. Mesuré sur un restaurant à trois attributs renseignés :
-        3 combinaisons calculées pour `n_features=1`, 3 pour `n_features=2`,
-        une seule retenue à chaque fois.
-    TODO: `available` est construit dans l'ordre de `features`, donc la première
-        combinaison est toujours la même pour un POI donné. Retirer deux fois le
-        même POI produit deux fois la question identique — d'où les doublons
-        mesurés (4 sur 60). Si une seule combinaison doit être retenue, autant
-        la tirer au sort ici, avec le `rng` de l'appelant.
     """
     # Calcule tous les fragments disponibles pour ce POI
     # (fragment, colonne, valeur attendue)

@@ -88,35 +88,60 @@ def split_train_test(
     n_test = int(n_questions * ratio_test)
     return positions[n_test:], positions[:n_test]
 
-def stratify(
-        df_question: DataFrame, 
-        positions: NDArray,
-        ratio_features: dict[int, float], 
-        rng: Generator
-    ) -> NDArray:
-    """Sous-ensemble de questions respectant les proportions par nombre de contraintes.
+def strates(df_question: DataFrame, par: str) -> NDArray:
+    """La valeur de `par` pour chaque question.
 
     Args:
-        df_question: questions, colonne `nb_feature`.
+        df_question: questions, colonnes `nb_feature` et `features`.
+        par: `"category"`, ou le nom d'une colonne de `df_question`.
+
+    Returns:
+        Un tableau objet aligné sur `df_question`.
+    """
+    if par == "category":
+        # La catégorie n'est pas une colonne mais une contrainte : les questions
+        # qui ne la portent pas tombent dans la strate `None`.
+        return np.array([c.get("category") for c in df_question["features"]], dtype=object)
+    return df_question[par].to_numpy()
+
+def stratify(
+        df_question: DataFrame,
+        positions: NDArray,
+        ratios: dict[Any, float] | None,
+        rng: Generator,
+        par: str = "nb_feature",
+    ) -> NDArray:
+    """Sous-ensemble de questions respectant les proportions demandées sur `par`.
+
+    Args:
+        df_question: questions, colonnes `nb_feature` et `features`.
         positions: positions candidates.
-        ratio_features: nb_feature -> part du total, par exemple {1: 0.4, 2: 0.4, 3: 0.2}.
+        ratios: valeur de `par` -> part du total, par exemple {1: 0.4, 2: 0.4, 3: 0.2}
+            pour `nb_feature`, ou {"restaurant": 0.25, "cafe": 0.25, ...} pour
+            `category`. Une valeur absente du dict est écartée. `None` ou `{}`
+            rend toutes les positions, sans rien écarter ni consommer `rng`.
         rng: générateur numpy.
+        par: axe de stratification — `"nb_feature"`, `"category"`, ou toute
+            colonne de `df_question`.
 
     Returns:
         Les positions retenues, mélangées.
     """
-    nb_feature = df_question["nb_feature"].to_numpy()
-    pools = {nb: positions[nb_feature[positions] == nb] for nb in ratio_features}
+    if not ratios:
+        return np.asarray(positions, dtype=int)
+
+    cles = strates(df_question, par)
+    pools = {valeur: positions[cles[positions] == valeur] for valeur in ratios}
 
     # Combien de questions au total peut-on tirer sans casser les proportions ?
     # C'est la strate la plus pauvre qui décide.
-    n_total = min([len(pools[nb]) / ratio
-                   for nb, ratio in ratio_features.items() if ratio > 0], default=0)
+    n_total = min([len(pools[valeur]) / ratio
+                   for valeur, ratio in ratios.items() if ratio > 0], default=0)
 
     selected = []
-    for nb, ratio in ratio_features.items():
+    for valeur, ratio in ratios.items():
         taille = int(n_total * ratio)
-        selected += list(rng.choice(pools[nb], size=taille, replace=False))
+        selected += list(rng.choice(pools[valeur], size=taille, replace=False))
 
     selected = np.array(selected, dtype=int)
     rng.shuffle(selected)   # sinon les batchs sortent triés par difficulté
@@ -290,10 +315,8 @@ def make_benchmark_question(
         df_osm: DataFrame, 
         rng: Generator,
         ratio_test: float = 0.1,
-        ratio_features: dict[int, float] = {1: 0.4, 2: 0.4, 3: 0.2}, 
-        batch_size: int = 40, 
-        n_times: int = 100,
-        nb_answers: int = 5,
+        ratio_features: dict[int, float] | None = None,
+        ratio_category: dict[str, float] | None = None,
         nb_hard: int = 20,
         nb_unmatches: int = 1,
     ) -> tuple[list[Batch], NDArray]:
@@ -302,18 +325,26 @@ def make_benchmark_question(
     Args:
         df_question: questions.
         df_osm: corpus de POI.
-        ratio_test: part réservée au test.
-        ratio_features: proportions passées à `stratify`.
         rng: générateur numpy.
+        ratio_test: part réservée au test.
+        ratio_features: proportions par nombre de contraintes, par exemple
+            {1: 0.4, 2: 0.4, 3: 0.2}. `None` garde toutes les questions.
+        ratio_category: proportions par catégorie, par exemple
+            {"restaurant": 0.25, "cafe": 0.25, "bar": 0.25, "hotel": 0.25} pour
+            corriger un corpus déséquilibré. `None` garde toutes les questions.
+            Dans les deux cas, une valeur absente du dict est écartée.
         batch_size: questions par batch.
-        n_hard: négatifs difficiles par question.
+        n_times: variantes par batch, passé à `augment_benchmark`.
+        nb_answers: réponses conservées par question à l'augmentation.
+        nb_hard: négatifs difficiles par question.
         nb_unmatches: transmis à `hard_negatives`.
 
     Returns:
         Les batchs d'entraînement, et les positions de test.
     """
     train, test = split_train_test(len(df_question), ratio_test, rng)
-    train = stratify(df_question, train, ratio_features, rng)
+    #train = stratify(df_question, train, ratio_features, rng)
+    #train = stratify(df_question, train, ratio_category, rng, par="category")
     train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches)
     test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, is_test=True)
     #train_batches = augment_benchmark(train_batches, df_question, n_times, nb_answers=nb_answers, rng=rng)
