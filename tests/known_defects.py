@@ -70,6 +70,32 @@ INCOHERENT_TEMPLATES = {
     ),
 }
 
+#: Templates dont le registre annonce des colonnes de contexte que le
+#: générateur ne publie pas (ou plus).
+#:
+#: Famille distincte d'`INCOHERENT_TEMPLATES`, et pour la même raison
+#: qu'`UNPLOTTABLE_TEMPLATES` en est un sous-ensemble strict : la divergence est
+#: entre le *registre* et le module, pas dans la sortie elle-même. Le benchmark
+#: produit reste cohérent — `results_poi_*` est complet, `validate_benchmark`
+#: passe — donc marquer ces templates incohérents ferait échouer en XPASS(strict)
+#: `test_result_lists_complete` et `test_benchmark_is_coherent`, qu'ils passent.
+#: Seuls `test_declared_columns_present` et `test_query_mentions_its_context`
+#: lisent cette table.
+MISDECLARED_CONTEXT_COLUMNS = {
+    "point_between": (
+        "schema.py:99-102 déclare `point_between` avec `_ANCHOR_COLS + "
+        "_POINT_B_COLS` (`anchor_index`, `anchor_name`, `anchor_category`, "
+        "`anchor_x`, `anchor_y`, `point_b_index`…), mais point_between.py:128 "
+        "publie `anchor_a_*` et `anchor_b_*` : les dix colonnes annoncées sont "
+        "absentes du DataFrame. Le template ayant deux ancres et non une ancre "
+        "et un point B, c'est le registre qui est périmé — il a gardé le "
+        "vocabulaire de `point_towards`. Conséquence en cascade : "
+        "`label_column='anchor_name'` ne désigne aucune colonne, donc "
+        "`test_query_mentions_its_context` lève KeyError au lieu de comparer "
+        "l'énoncé à son libellé"
+    ),
+}
+
 #: Templates dont la sortie ne satisfait pas les préconditions de
 #: `plot_question`. **Sous-ensemble strict de `INCOHERENT_TEMPLATES`**, sur le
 #: modèle d'`IMPORT_ERRORS` ⊂ `BROKEN_TEMPLATES` : toute violation du schéma
@@ -93,7 +119,7 @@ UNANSWERABLE_TEMPLATES = {
     "point_near_cardinal": (
         "point_near_cardinal.py — idem : un secteur cardinal peut ne "
         "contenir aucun POI de la catégorie, la question est ajoutée quand "
-        "même (mesuré : 9/40 à nb_q=10)"
+        "même (mesuré : 24/100 à nb_q=21, le plancher du template)"
     ),
 }
 
@@ -164,6 +190,13 @@ SEMANTIC_DEFECTS = {
         "Les deux modules ne s'accordent pas sur ce qui identifie une rue : sur "
         "un `df_streets` réindexé — ce que fait n'importe quel filtrage en "
         "amont — street_cross se trompe de rue en silence, ou lève"
+    ),
+    "point_near_cardinal_garde_fou_off_by_one": (
+        "point_near_cardinal.py:99-100 — `if nb_q <= 20: raise ValueError"
+        "(\"nb_q doit être ≥ 20\")` : le code refuse la valeur que son propre "
+        "message annonce comme valide. Le plancher lui-même est légitime — le "
+        "tirage fait `nb_q_anc // len(list_direction)`, qui vaut 0 en dessous — "
+        "mais il devrait s'écrire `< 20`. Mesuré : nb_q=20 lève, nb_q=21 passe"
     ),
     "area_direction_test_de_sous_chaine": (
         "area_direction.py — `direction in 'north south'` est un test de "

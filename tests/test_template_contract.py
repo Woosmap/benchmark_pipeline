@@ -29,6 +29,7 @@ from tests.known_defects import (
     BROKEN_TEMPLATES,
     IMPORT_ERRORS,
     INCOHERENT_TEMPLATES,
+    MISDECLARED_CONTEXT_COLUMNS,
     UNANSWERABLE_TEMPLATES,
     UNPLOTTABLE_TEMPLATES,
     merge_reasons,
@@ -87,7 +88,7 @@ def test_generator_produces_questions(template, run_template):
     )
 
 
-@for_each_template(BROKEN_TEMPLATES)
+@for_each_template(BROKEN_TEMPLATES, MISDECLARED_CONTEXT_COLUMNS)
 def test_declared_columns_present(template, run_template):
     """Toutes les colonnes annoncées par le template sont là.
 
@@ -164,7 +165,7 @@ def test_benchmark_is_coherent(template, run_template, df_osm):
     )
 
 
-@for_each_template(BROKEN_TEMPLATES)
+@for_each_template(BROKEN_TEMPLATES, MISDECLARED_CONTEXT_COLUMNS)
 def test_query_mentions_its_context(template, run_template):
     """L'énoncé nomme bien l'objet sur lequel il porte.
 

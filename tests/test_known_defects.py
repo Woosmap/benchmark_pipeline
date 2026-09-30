@@ -232,6 +232,22 @@ def test_direction_area_rejects_unknown_directions(df_osm, df_area, bogus):
         direction_area(df_osm, area, bogus)
 
 
+@defect("point_near_cardinal_garde_fou_off_by_one")
+def test_point_near_cardinal_accepts_its_announced_minimum(df_osm):
+    """Le plancher refusé est celui que le message annonce comme valide.
+
+    Le garde-fou est justifié — sous 20, `nb_q_anc // len(list_direction)` vaut
+    0 et le tirage ne rend rien — mais il s'écrit `<=` au lieu de `<`. La suite
+    contourne l'écart en appelant ce template à 21 (`conftest.TEMPLATE_NB_Q`).
+    """
+    from generator.template_question.geospatial.point_near_cardinal import (
+        make_question_point_near_cardinal,
+    )
+
+    bench = make_question_point_near_cardinal(df_osm, nb_q=20, seed=42)
+    assert len(bench) > 0
+
+
 # --------------------------------------------------------------------------- #
 # classement dégénéré : la distance ne discrimine rien
 # --------------------------------------------------------------------------- #
@@ -456,7 +472,9 @@ def test_street_cross_module_has_no_import_side_effect():
     """
     import importlib
 
-    importlib.import_module("benchmark_generator.template_question.geospatial.street_cross")
+    from generator.template_question.schema import TEMPLATES_BY_NAME
+
+    importlib.import_module(TEMPLATES_BY_NAME["street_cross"].module)
 
 
 def test_every_template_module_imports_cleanly():
@@ -485,11 +503,11 @@ def test_area_name_is_the_only_spelling_of_the_area_label():
     relit la source pour que l'orthographe fautive ne revienne pas par
     copier-coller d'un module à l'autre.
     """
-    import pathlib
+    from generator.template_question.schema import TEMPLATES_BY_NAME
+    from tests.conftest import template_source
 
     for name in ("area_inside", "area_outside", "area_border", "area_direction"):
-        source = pathlib.Path(
-            f"src/benchmark_generator/template_question/geospatial/{name}.py").read_text(encoding="utf-8")
+        source = template_source(TEMPLATES_BY_NAME[name]).read_text(encoding="utf-8")
         assert "name_area" not in source, (
             f"{name}.py contient encore `name_area` ; le contrat des loaders "
             f"porte `area_name`"

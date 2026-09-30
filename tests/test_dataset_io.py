@@ -304,14 +304,17 @@ def test_registry_matches_the_modules_on_disk():
     la couverture.
     """
     import importlib
-    import pathlib
 
     from generator.template_question.schema import TEMPLATE_REGISTRY
+    from tests.conftest import template_source
 
     for template in TEMPLATE_REGISTRY:
-        module_path = pathlib.Path(
-            "src/benchmark_generator/template_question/geospatial") / f"{template.name}.py"
+        module_path = template_source(template)
         assert module_path.exists(), f"{module_path} est introuvable"
+        assert module_path.stem == template.name, (
+            f"{template.name} est déclaré dans {template.module}, dont le "
+            f"fichier s'appelle {module_path.name}"
+        )
 
         module = importlib.import_module(template.module)
         assert callable(getattr(module, template.generator, None)), (
@@ -321,10 +324,10 @@ def test_registry_matches_the_modules_on_disk():
 
 def test_every_template_module_is_in_the_registry():
     """Aucun template sur disque n'échappe au registre."""
-    import pathlib
+    from tests.conftest import geospatial_dir
 
     on_disk = {
-        p.stem for p in pathlib.Path("src/benchmark_generator/template_question/geospatial").glob("*.py")
+        p.stem for p in geospatial_dir().glob("*.py")
         if not p.stem.startswith("_")
     } - NON_TEMPLATE_MODULES
     assert on_disk == set(TEMPLATES_BY_NAME), (

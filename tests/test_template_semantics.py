@@ -195,12 +195,17 @@ def test_point_between_stays_in_the_ab_corridor(run_template, df_osm):
     corridor = 200.0             # défaut du générateur
     geo = df_osm.set_index("poi_id")
 
+    # `anchor_a_*`/`anchor_b_*`, et non `anchor_*`/`point_b_*` : le template a
+    # deux ancres symétriques. Le registre, lui, annonce encore le vocabulaire
+    # à une ancre de `point_towards` — divergence tenue dans
+    # `known_defects.MISDECLARED_CONTEXT_COLUMNS`. L'oracle géométrique doit
+    # lire ce que le générateur publie, sinon il ne teste plus la géométrie.
     for i, row in bench.iterrows():
         ids = _as_list(row["results_poi_id"])
         if not ids:
             continue
-        ax, ay = row["anchor_x"], row["anchor_y"]
-        abx, aby = row["point_b_x"] - ax, row["point_b_y"] - ay
+        ax, ay = row["anchor_a_x"], row["anchor_a_y"]
+        abx, aby = row["anchor_b_x"] - ax, row["anchor_b_y"] - ay
         ab_len = np.hypot(abx, aby)
 
         pts = geo.loc[ids]
