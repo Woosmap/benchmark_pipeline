@@ -33,6 +33,7 @@ import inspect
 from generator.template_question import geospatial
 from generator.template_question.registry import REGISTRY
 from generator.template_question.ratio import allocate
+from config import FEATURES
 
 
 #: Les douze générateurs spatiaux, désignés par leur clé dans `REGISTRY` — donc
@@ -149,9 +150,14 @@ def question_geo_semantic(df_question, df_osm, nb_q, features_cols, ratio=None, 
 
 
 def make_question_geo(
-        df_osm, df_area=None, df_streets=None, nb_q_by_temp=100, nb_q_by_feat=10, 
-        list_template=list_template, ratio=None, 
-        feature_cols=["outdoor_seating", "indoor_seating", "cooking_type"],
+        df_osm, 
+        df_area=None, 
+        df_streets=None, 
+        nb_q_by_temp=100, 
+        nb_q_by_feat=10, 
+        list_template=list_template, 
+        ratio=None, 
+        feature_cols=FEATURES,
         seed=42
     ):
     """Produit le jeu complet de questions composites.
