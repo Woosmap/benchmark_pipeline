@@ -2,9 +2,9 @@
 name = "benchmark_pipeline"
 version = "0.1.0"
 description = "Generation de questions geospatiales a partir de donnees OpenStreetMap"
-requires-python = ">=3.11"
+requires-python = ">=3.11, <=3.12"
 
-# Librairies utilisees dans src/
+# Librairies utilisees dans benchmark_pipeline/
 dependencies = [
     "pandas",
     "numpy",
@@ -16,20 +16,31 @@ dependencies = [
     "osmnx>=2.0",        # l'API a change en v2, ne pas descendre en dessous
     "scipy",
     "matplotlib",
-    "contextily",        # fonds de carte dans src/dataviz_tools
-    "sentence-transformers",  # similarite semantique dans data_cleaning
 ]
 
-# Installation : pip install -e ".[dev]"
 [project.optional-dependencies]
+viz = ["contextily"]
+nlp = ["sentence-transformers"]
+
+# Installation : uv sync (le groupe dev est installe par defaut)
+[dependency-groups]
 dev = [
     "pytest",
-    "ruff"
+    "ruff",
+    "ipykernel"
 ]
 
 [build-system]
-requires = ["setuptools>=61"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.10,<0.11"]
+build-backend = "uv_build"
 
-[tool.setuptools.packages.find]
-where = ["src"]
+# Le paquet est a la racine, pas dans src/ : uv_build cherche par defaut
+# src/<nom du projet>, il faut donc lui dire ou regarder.
+[tool.uv.build-backend]
+module-root = ""
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]   # for `from tests.known_defects import ...`
+addopts = ["--strict-markers", "-ra"]
+markers = ["slow: slow tests (DuckDB per question)"]

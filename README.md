@@ -9,14 +9,15 @@ Trois familles de générateurs :
 
 | Famille | Où | Ce qu'elle produit |
 |---|---|---|
-| **géospatiale** | `src/generator/template_question/geospatial/` | 12 templates : proximité (`point_near`, `point_near_metric`), direction (`point_near_cardinal`, `point_towards`, `point_between`), zone (`area_inside`, `area_outside`, `area_border`, `area_direction`), rue (`street_along`, `street_cross`, `street_opposite_side`) |
-| **sémantique** | `src/generator/template_question/semantic/` | questions sur les attributs d'un POI (cuisine, terrasse, horaires) |
-| **composite** | `src/generator/template_question/composite/` | `make_question_geo`, qui croise les deux |
+| **géospatiale** | `benchmark_pipeline/generator/template_question/geospatial/` | 12 templates : proximité (`point_near`, `point_near_metric`), direction (`point_near_cardinal`, `point_towards`, `point_between`), zone (`area_inside`, `area_outside`, `area_border`, `area_direction`), rue (`street_along`, `street_cross`, `street_opposite_side`) |
+| **sémantique** | `benchmark_pipeline/generator/template_question/semantic/` | questions sur les attributs d'un POI (cuisine, terrasse, horaires) |
+| **composite** | `benchmark_pipeline/generator/template_question/composite/` | `make_question_geo`, qui croise les deux |
 
 Chaque template géospatial suit le même contrat :
 `make_question_*(df, …, nb_q, seed) -> DataFrame`, et est déclaré dans
-`TEMPLATE_REGISTRY` (`src/generator/template_question/schema.py`), qui sert à la
-fois à l'enregistrement en lot et à la paramétrisation des tests.
+`TEMPLATE_REGISTRY`
+(`benchmark_pipeline/generator/template_question/schema.py`), qui sert à la fois
+à l'enregistrement en lot et à la paramétrisation des tests.
 
 ---
 
@@ -25,42 +26,37 @@ fois à l'enregistrement en lot et à la paramétrisation des tests.
 - **Python 3.11** (`requires-python = ">=3.11"`). Version de référence : 3.11.15.
 - Un accès réseau pour les chargeurs OSM : ils interrogent l'API Overpass via
   `osmnx`. Les tests, eux, ne touchent pas au réseau.
-- Les dépendances lourdes (`geopandas`, `shapely`, `pyproj`, `duckdb`, `osmnx`,
-  `sentence-transformers`) sont déclarées dans `pyproject.toml`.
 
 ## Installation
 
-Avec [uv](https://docs.astral.sh/uv/) :
-
 ```bash
-uv venv --python 3.11
-source .venv/bin/activate
-uv pip install -e ".[dev]"
+uv sync
 ```
 
-Avec pip ou conda :
+`uv sync` crée un `.venv/` à la racine et y installe les dépendances de base
+plus le groupe `dev` (pytest, ruff, ipykernel). Deux extras sont optionnels,
+parce qu'ils sont lourds et ne servent qu'à une partie du code :
 
 ```bash
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv sync --extra viz    # contextily : fonds de carte dans dataviz_tools/
+uv sync --extra nlp    # sentence-transformers : similarité dans data_cleaning/
 ```
 
-`src/` est la racine des paquets : `config`, `loader`, `generator`, `utils` et
-`dataviz_tools` s'importent en top-level. **Pour tout ce qui n'est pas la suite
-de tests, mettez `src/` sur le `PYTHONPATH`** — l'installation éditable ne
-suffit pas encore (cf. [Limites connues](#limites-connues)) :
+### Dans VS Code
+
+Rien d'autre à installer : `⇧⌘P` → **Python: Select Interpreter** → choisir
+`./.venv/bin/python`. Les fichiers `.py` s'exécutent alors directement, le
+panneau **Testing** découvre `pytest`, et `demo.ipynb` s'ouvre dans l'éditeur de
+notebooks intégré — c'est à ça que sert `ipykernel` dans le groupe `dev`.
+
+Jupyter Lab n'est **pas** installé (`jupyterlab` n'est pas une dépendance du
+projet) : `uv run jupyter lab` échoue. Si tu le veux malgré tout, ajoute-le au
+groupe `dev`, sinon reste sur VS Code.
 
 ```bash
-export PYTHONPATH=src
-```
-
-Vérification que la chaîne d'imports est complète :
-
-```bash
-PYTHONPATH=src python -c "
-from config import BBOX
-from loader.osm_loaders import load_pois
-from generator.template_question.schema import TEMPLATE_REGISTRY
+python -c "
+from benchmark_pipeline.config import BBOX
+from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
 print(len(TEMPLATE_REGISTRY), 'templates,  bbox', BBOX)
 "
 # -> 12 templates,  bbox (2.24, 48.8, 2.41, 48.9)
@@ -73,7 +69,7 @@ print(len(TEMPLATE_REGISTRY), 'templates,  bbox', BBOX)
 Depuis la racine du dépôt :
 
 ```bash
-python -m pytest
+pytest
 ```
 
 Sortie attendue :
@@ -82,19 +78,18 @@ Sortie attendue :
 145 passed, 24 xfailed
 ```
 
-> **`python -m pytest`, pas `pytest`.** Les tests s'importent entre eux
-> (`from tests.conftest import …`), `tests/` n'a pas d'`__init__.py`, et
-> `pytest.ini` ne met que `src` sur le `pythonpath`. La forme `python -m` ajoute
-> le répertoire courant à `sys.path` ; `pytest` seul échoue à la collecte avec
-> `ModuleNotFoundError: No module named 'tests'`.
-
 Quelques invocations utiles :
 
 ```bash
-python -m pytest tests/test_template_contract.py   # un fichier
-python -m pytest -k point_near                     # un template
-python -m pytest -rxX                              # détail des xfail/xpass
+pytest tests/test_template_contract.py   # un fichier
+pytest -k point_near                     # un template
+pytest -rxX                              # détail des xfail/xpass
 ```
+
+La configuration est dans `[tool.pytest.ini_options]` du `pyproject.toml`.
+`pythonpath = ["."]` met la racine sur le `sys.path`, ce qui rend importables à
+la fois `benchmark_pipeline` et `tests` — les tests s'importent entre eux
+(`from tests.conftest import …`) et `tests/` n'a pas d'`__init__.py`.
 
 ### Lire le résultat : le rôle des `xfailed`
 
@@ -105,8 +100,8 @@ portent un `xfail(strict=True)`, ce qui donne trois propriétés :
 
 - la suite sort **verte** tant que les défauts connus le restent, donc elle est
   exploitable en intégration continue ;
-- chaque défaut reste **visible et documenté** — `python -m pytest -rxX` en
-  affiche le motif complet ;
+- chaque défaut reste **visible et documenté** — `pytest -rxX` en affiche le
+  motif complet ;
 - `strict=True` fait échouer le test en **XPASS** le jour où le défaut est
   corrigé : le test dit alors « c'est réparé, retire le marqueur », au lieu de
   rester vert en silence et de laisser l'inventaire mentir.
@@ -130,15 +125,17 @@ ruff check .
 
 ## Lancer le pipeline
 
-Le périmètre géographique et les tags OSM sont dans `src/config.py` (`BBOX`,
-`CATEGORIES`, `STREETS_TAGS`, `AREA_TAGS`). `BBOX` couvre Paris ;
-`BBOX_TEST` est un petit rectangle autour du Marais, utile pour itérer vite.
+Le périmètre géographique et les tags OSM sont dans
+`benchmark_pipeline/config.py` (`BBOX`, `CATEGORIES`, `STREETS_TAGS`,
+`AREA_TAGS`). `BBOX` couvre Paris ; `BBOX_TEST` est un petit rectangle autour du
+Marais, utile pour itérer vite.
 
 ```python
-# PYTHONPATH=src
-from loader.osm_loaders import load_pois, load_streets, load_area
-from generator.template_question.geospatial.point_near import make_question_point_near
-from utils.dataset_io import save_benchmark
+from benchmark_pipeline.loader.osm_loaders import load_pois, load_streets, load_area
+from benchmark_pipeline.generator.template_question.geospatial.point_near import (
+    make_question_point_near,
+)
+from benchmark_pipeline.utils.dataset_io import save_benchmark
 
 df_osm = load_pois()          # réseau : Overpass via osmnx
 df_streets = load_streets()
@@ -152,26 +149,27 @@ save_benchmark(bench, "point_near.parquet", df_osm=df_osm)
   pas de cache Parquet (`use_cache=False`). `osmnx` met en cache les réponses
   HTTP dans `cache/` (~70 Mo pour la bbox Paris), ignoré par git — un clone neuf
   retélécharge donc.
-- `save_benchmark` / `save_benchmark_suite` (`src/utils/dataset_io.py`) écrivent
-  dans `data/benchmarks/geospatial/` avec un fichier de métadonnées (commit git,
+- `save_benchmark` / `save_benchmark_suite`
+  (`benchmark_pipeline/utils/dataset_io.py`) écrivent dans
+  `data/benchmarks/geospatial/` avec un fichier de métadonnées (commit git,
   versions des bibliothèques, schéma). `data/` est ignoré par git.
 - `make_question_geo`
-  (`src/generator/template_question/composite/generator_qcomposite.py`) combine
-  questions géospatiales et sémantiques ; c'est le point d'entrée du benchmark
-  complet, et il attend `df_osm`, `df_area` et `df_streets`.
+  (`benchmark_pipeline/generator/template_question/composite/generator_qcomposite.py`)
+  combine questions géospatiales et sémantiques ; c'est le point d'entrée du
+  benchmark complet, et il attend `df_osm`, `df_area` et `df_streets`.
 - Le nettoyage des types de cuisine peut appeler `sentence-transformers`
-  (`paraphrase-multilingual-MiniLM-L12-v2`) : premier appel = téléchargement du
-  modèle.
+  (`paraphrase-multilingual-MiniLM-L12-v2`, extra `nlp`) : premier appel =
+  téléchargement du modèle.
 
-`demo.ipynb` montre l'enchaînement bout en bout. Lancez Jupyter depuis la racine
-du dépôt, avec `src/` sur le `PYTHONPATH`.
+`demo.ipynb` montre l'enchaînement bout en bout : ouvrez-le dans VS Code avec
+l'interpréteur `./.venv/bin/python`.
 
 ---
 
 ## Organisation
 
 ```
-src/
+benchmark_pipeline/
   config.py                      # bbox, tags OSM, features — le seul fichier à éditer
   loader/                        # extraction et nettoyage OSM
     osm_extractor.py             #   appels Overpass, cache
@@ -206,17 +204,10 @@ qu'ils ne divergent pas.
 
 Ce qui surprendra quelqu'un qui reprend le dépôt :
 
-- **`config` n'est pas installé par `pip install -e .`.** `pyproject.toml`
-  déclare `[tool.setuptools.packages.find] where = ["src"]`, qui découvre bien
-  les paquets (`loader`, `generator`, `utils`, `dataviz_tools`) mais pas le
-  module `src/config.py` — dont dépend `loader/osm_loaders.py`. D'où le
-  `PYTHONPATH=src`. Correctif : ajouter `[tool.setuptools] py-modules =
-  ["config"]`.
-- **`pytest` seul ne collecte pas** (voir plus haut). Correctif : `pythonpath =
-  src .` dans `pytest.ini`.
 - **`workflows/tests.yml` n'est pas au bon endroit** : GitHub Actions lit
-  `.github/workflows/`. Le fichier n'est donc jamais exécuté, et sa dernière
-  étape (`pytest`, sans `python -m`) échouerait à la collecte.
+  `.github/workflows/`. Le fichier n'est donc jamais exécuté. Son étape
+  d'installation (`pip install -e ".[dev]"`) est par ailleurs périmée depuis le
+  passage à `uv_build` et aux `[dependency-groups]` — c'est `uv sync`.
 - **`extract_woosmap_pois` contient des chemins absolus** vers la machine de
   l'auteur (`/Users/sese/Documents/code/benchmark_NL_POI/…`). La fonction n'est
   pas utilisable ailleurs en l'état ; le chemin OSM (`extract_osm_pois`), lui,

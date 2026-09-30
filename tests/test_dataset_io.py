@@ -11,8 +11,8 @@ import json
 import pandas as pd
 import pytest
 
-from generator.template_question.schema import TEMPLATES_BY_NAME
-from utils.dataset_io import (
+from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+from benchmark_pipeline.utils.dataset_io import (
     FORMAT_VERSION,
     load_benchmark,
     load_benchmark_suite,
@@ -27,7 +27,7 @@ from shapely.geometry import LineString, Point, box  # noqa: E402
 @pytest.fixture(scope="module")
 def bench(df_osm):
     """Un vrai benchmark, produit par le seul template aujourd'hui sain."""
-    from generator.template_question.geospatial.point_near import make_question_point_near
+    from benchmark_pipeline.generator.template_question.geospatial.point_near import make_question_point_near
 
     return make_question_point_near(df_osm, nb_q=10, seed=42)
 
@@ -116,7 +116,7 @@ def test_loaded_benchmark_is_still_plottable(bench, tmp_path, df_osm):
     invisibles.
     """
     pytest.importorskip("matplotlib")
-    from generator.template_question.schema import validate_benchmark
+    from benchmark_pipeline.generator.template_question.schema import validate_benchmark
 
     path = save_benchmark(bench, tmp_path / "b.parquet", df_osm=df_osm)
     back = load_benchmark(path)
@@ -305,7 +305,7 @@ def test_registry_matches_the_modules_on_disk():
     """
     import importlib
 
-    from generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
     from tests.conftest import template_source
 
     for template in TEMPLATE_REGISTRY:
@@ -351,8 +351,8 @@ def test_the_two_registries_describe_the_same_templates():
     inverse ferait échouer la paramétrisation. Ce test est le seul endroit qui
     les confronte.
     """
-    import generator.template_question.geospatial  # noqa: F401 — peuple REGISTRY
-    from generator.template_question.registry import REGISTRY
+    import benchmark_pipeline.generator.template_question.geospatial  # noqa: F401 — peuple REGISTRY
+    from benchmark_pipeline.generator.template_question.registry import REGISTRY
 
     decorated = set(REGISTRY)
     declared = {t.generator for t in TEMPLATES_BY_NAME.values()}
@@ -376,7 +376,7 @@ def test_registry_generators_share_the_nb_q_and_seed_contract():
     import importlib
     import inspect
 
-    from generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
 
     for template in TEMPLATE_REGISTRY:
         module = importlib.import_module(template.module)

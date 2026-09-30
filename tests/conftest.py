@@ -4,7 +4,7 @@ Les tests ne tapent ni Overpass ni le cache OSM : ils travaillent sur une grille
 de POIs construite ici. Trois raisons à ce choix — le déterminisme (une vérité
 terrain recalculable à la main), la vitesse, et l'absence de réseau.
 
-Le contrat de colonnes est celui de `src/data_collection/osm_loaders.py`, qui est
+Le contrat de colonnes est celui de `benchmark_pipeline/loader/osm_loaders.py`, qui est
 la direction voulue du projet :
 
 * `df_osm`     → `poi_id`, `poi_name`, `category`, `x`, `y`, `geometry`
@@ -281,7 +281,7 @@ def template_source(template):
     Returns:
         pathlib.Path: Le `.py` du module.
     """
-    # Ne jamais reconstruire `src/<paquet>/template_question/geospatial/<nom>.py`
+    # Ne jamais reconstruire `<paquet>/template_question/geospatial/<nom>.py`
     # à la main : le paquet a déjà été renommé une fois (`benchmark_generator`
     # -> `generator`) et les tests qui codaient l'ancien chemin ont échoué en
     # FileNotFoundError — un défaut de test déguisé en défaut de registre.
@@ -294,7 +294,7 @@ def geospatial_dir():
     Returns:
         pathlib.Path: Le dossier `geospatial/` réellement importé.
     """
-    from generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
 
     return template_source(TEMPLATE_REGISTRY[0]).parent
 
