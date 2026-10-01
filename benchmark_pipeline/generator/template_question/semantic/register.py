@@ -15,10 +15,10 @@ class BenchmarkConfig:
     seed: int
 
 def register_semantic_query(
-        save_path,
-        df_question,
-        df_osm,
-        conf,
+    save_path,
+    df_question,
+    df_osm,
+    conf,
     ):
     kwargs = asdict(conf)
     rng = np.random.default_rng(kwargs.pop("seed"))

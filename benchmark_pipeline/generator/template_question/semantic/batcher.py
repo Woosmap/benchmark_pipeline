@@ -147,56 +147,6 @@ def stratify(
     rng.shuffle(selected)   # sinon les batchs sortent triés par difficulté
     return selected
 
-def make_batches(
-        df_question: DataFrame, 
-        df_osm: DataFrame, 
-        positions: NDArray,
-        rng: Generator, 
-        batch_size: int = 32, 
-        n_hard: int = 2,
-        nb_unmatches: int = 1
-    ) -> list[Batch]:
-    """Découpe les positions en batchs : questions, pool de POI, masque de pertinence.
-
-    Args:
-        df_question: questions, colonnes `question`, `pois`, `features`.
-        df_osm: corpus de POI.
-        positions: positions des questions à batcher.
-        rng: générateur numpy.
-        batch_size: questions par batch.
-        n_hard: négatifs difficiles ajoutés par question.
-        nb_unmatches: transmis à `hard_negatives`.
-
-    Returns:
-        Un batch par tranche de `batch_size` positions.
-    """
-    batches = []
-
-    for start in range(0, len(positions), batch_size):
-        chunk = positions[start:start + batch_size]
-
-        # Le pool est commun : les POI pertinents d'une question servent de
-        # négatifs à toutes les autres du batch, sans avoir à les chercher.
-        pois_par_question = [set(df_question["pois"].iloc[pos]) for pos in chunk]
-        poi_ids = []
-        for pois in pois_par_question:
-            for poi in pois:
-                if poi not in poi_ids:
-                    poi_ids.append(poi)
-
-        for i, pos in enumerate(chunk):
-            candidats = hard_negatives(pos, df_question, df_osm, nb_unmatches)
-            for poi in tirer(rng, candidats, n_hard):
-                if poi not in poi_ids and poi not in pois_par_question[i]:
-                    poi_ids.append(poi)
-
-        batches.append({
-            "questions": [df_question["question"].iloc[pos] for pos in chunk],
-            "poi_ids": poi_ids,
-        })
-
-    return batches
-
 def make_rows(
         df_question: DataFrame,
         df_osm: DataFrame,
@@ -224,6 +174,7 @@ def make_rows(
         pois = list(set(df_question["pois"].iloc[pos]))
         if is_test:
             rows.append({
+                "index": pos,
                 "question": df_question["question"].iloc[pos],
                 "pois": pois,
             })
@@ -231,6 +182,7 @@ def make_rows(
             candidats = hard_negatives(pos, df_question, df_osm, nb_unmatches)
             hard_pois = [p for p in tirer(rng, candidats, n_hard) if p not in pois]
             rows.append({
+                "index": pos,
                 "question": df_question["question"].iloc[pos],
                 "pois": pois,
                 "hard_pois": hard_pois,
@@ -283,32 +235,6 @@ def change_answer_batch(
                     if poi not in deja and poi not in pertinents]
     return {"questions": list(questions), "poi_ids": poi_ids_out}
 
-def augment_benchmark(
-        batches: list[Batch], 
-        df_questions: DataFrame,
-        n_times: int, 
-        nb_answers: int,
-        rng: Generator,
-    ) -> list[Batch]:
-    """Ajoute n_times variantes de chaque batch, avec d'autres réponses.
-
-    Args:
-        batches: batchs produits par `make_batches` ; allongée sur place.
-        df_questions: vérité terrain.
-        n_times: variantes par batch.
-        rng: générateur numpy
-
-    Returns:
-        `batches`, de taille (1 + n_times) x len(batches).
-
-    TODO: à n_times=100, les masques pèsent 65 Mo pour 1 000 questions et 3,2 Go
-        pour 50 000. Tirer les réponses dans le collator coûterait une mémoire
-        constante.
-    """
-    for k in range(len(batches)):
-        for _ in range(n_times):
-            batches.append(change_answer_batch(batches[k], df_questions, nb_answers, rng=rng))
-    return batches
 
 def make_benchmark_question(
         df_question: DataFrame, 
@@ -343,9 +269,6 @@ def make_benchmark_question(
         Les batchs d'entraînement, et les positions de test.
     """
     train, test = split_train_test(len(df_question), ratio_test, rng)
-    #train = stratify(df_question, train, ratio_features, rng)
-    #train = stratify(df_question, train, ratio_category, rng, par="category")
     train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches)
     test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, is_test=True)
-    #train_batches = augment_benchmark(train_batches, df_question, n_times, nb_answers=nb_answers, rng=rng)
     return train_set, test_set
