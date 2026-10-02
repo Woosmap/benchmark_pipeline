@@ -1,9 +1,20 @@
 data/
 cache/
+#MLflows
+*.gpkg
+checkpoints/
+*.pt
+mlruns/
+mlflow.db
+
+#data benchmark
+*.parquet
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
+.venv
 
 # C extensions
 *.so
