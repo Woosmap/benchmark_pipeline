@@ -112,7 +112,10 @@ def make_rows(
     """
     rows = []
     for pos in positions:
-        pois = list(set(df_question["pois"].iloc[pos]))
+        # `dict.fromkeys` et non `set` : les deux dédoublonnent, mais un `set`
+        # rend ses éléments dans l'ordre de ses cases de hachage, ce qui détruit
+        # l'ordre de pertinence des POIs. Cf. `composite/format_samples.py`.
+        pois = list(dict.fromkeys(df_question["pois"].iloc[pos]))
         if is_test:
             rows.append({
                 "index": pos,

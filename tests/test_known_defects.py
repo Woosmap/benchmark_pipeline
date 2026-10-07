@@ -7,22 +7,22 @@ silence une entrée absurde. Chacun a ici son test dédié, au plus près de la
 fonction fautive, pour que le jour de la correction on sache exactement quoi
 relancer.
 
-Les tests marqués `@defect` sont `xfail(strict=True)` : ils passent au vert le
-jour où le défaut est corrigé, ce que pytest signale alors comme un XPASS à
-traiter. Les autres sont des tests de non-régression ordinaires — plusieurs
-d'entre eux démontraient un défaut jusqu'à sa correction, et sont restés pour
-garder le comportement acquis.
+Les tests marqués `@defect` ou `@incoherent` sont `xfail(strict=True)` : ils
+passent au vert le jour où le défaut est corrigé, ce que pytest signale alors
+comme un XPASS à traiter. Les autres sont des tests de non-régression
+ordinaires — plusieurs d'entre eux démontraient un défaut jusqu'à sa
+correction, et sont restés pour garder le comportement acquis.
 """
 
 import numpy as np
 import pytest
 
-from tests.known_defects import BROKEN_TEMPLATES, SEMANTIC_DEFECTS
+from tests.known_defects import BROKEN_TEMPLATES, INCOHERENT_TEMPLATES, SEMANTIC_DEFECTS
 
 gpd = pytest.importorskip("geopandas")
-from shapely.geometry import LineString, MultiLineString  # noqa: E402
+from shapely.geometry import LineString, MultiLineString
 
-from tests.conftest import OX, OY, STREET_H_Y  # noqa: E402
+from tests.conftest import OX, OY, STREET_H_Y
 
 
 def defect(key, blocked_by=None):
@@ -34,9 +34,8 @@ def defect(key, blocked_by=None):
             empêche, en plus, d'atteindre ce défaut. Corriger `key` seul ne
             suffira donc pas à faire passer le test — le motif le dit
             explicitement, pour qu'un XPASS manquant ne soit pas pris pour un
-            oubli. Plus utilisé depuis que les huit templates cassés ont été
-            réparés ; conservé parce que `point_between` est de nouveau dans ce
-            cas et que la situation se reproduira.
+            oubli. Inutilisé tant que `BROKEN_TEMPLATES` est vide ; conservé
+            parce que la situation s'est déjà produite deux fois.
     """
     reason = SEMANTIC_DEFECTS[key]
     if blocked_by is not None:
@@ -44,72 +43,30 @@ def defect(key, blocked_by=None):
     return pytest.mark.xfail(strict=True, reason=reason)
 
 
+def incoherent(template_name):
+    """`xfail(strict=True)` portant le motif d'`INCOHERENT_TEMPLATES`.
+
+    Pour les défauts que `test_benchmark_is_coherent` constate déjà en bloc,
+    mais dont il vaut la peine de montrer la cause isolément : son message
+    énumère les symptômes, pas la ligne fautive.
+    """
+    return pytest.mark.xfail(strict=True, reason=INCOHERENT_TEMPLATES[template_name])
+
+
 # --------------------------------------------------------------------------- #
 # volumétrie : le nombre de questions produites ne correspond pas à nb_q
 # --------------------------------------------------------------------------- #
 
-@defect("point_between_quota")
-@pytest.mark.parametrize("nb_q", [10])
-def test_point_between_honours_nb_q(df_osm, nb_q):
-    """Le quota par catégorie est tenu, mais pas le total.
-
-    Le tirage est désormais stratifié sur `category_query` et parfaitement
-    équilibré — c'est la partie réparée. Reste que la boucle interne sur les
-    catégories d'ancre dépasse le compte avant de le revérifier : mesuré
-    30 questions pour nb_q=10 (×3,0), 60 pour nb_q=40 (×1,5), 130 pour
-    nb_q=110 (×1,18).
-
-    Le débordement s'amortit quand `nb_q` grandit, parce que le dépassement est
-    d'au plus une boucle de catégories d'ancre — constant en valeur absolue,
-    donc de moins en moins visible en relatif. À nb_q=110 il repasse sous la
-    tolérance de 25 %, d'où le paramétrage sur les deux tailles où il se
-    manifeste réellement.
-    """
-    from benchmark_pipeline.generator.template_question.geospatial.point_between import (
-        make_question_point_between,
-    )
-
-    bench = make_question_point_between(df_osm, nb_q=nb_q, seed=42)
-    assert len(bench) == pytest.approx(nb_q, rel=0.25), (
-        f"nb_q={nb_q} demandé, {len(bench)} questions produites "
-        f"(facteur {len(bench) / nb_q:.2f})"
-    )
-
-
-def test_point_between_has_no_empty_answers_at_full_size(df_osm):
-    """Aucune question d'entre-deux ne doit être livrée sans réponse.
-
-    Le tirage part désormais de la cible : un POI de la catégorie demandée est
-    choisi d'abord, puis A et B sont construits autour de lui, ce qui met la
-    réponse à l'abri du vide par construction. Le test reste à `nb_q=110`,
-    taille à laquelle le défaut se reproduisait (3 questions vides sur 130) —
-    c'est là qu'une régression se verrait, pas à `nb_q=10`.
-    """
-    from benchmark_pipeline.generator.template_question.schema import _as_list
-    from benchmark_pipeline.generator.template_question.geospatial.point_between import (
-        make_question_point_between,
-    )
-
-    bench = make_question_point_between(df_osm, nb_q=110, seed=42)
-    empty = [i for i, row in bench.iterrows()
-             if not _as_list(row["results_poi_id"])]
-    assert not empty, (
-        f"{len(empty)}/{len(bench)} questions sans réponse, ex. lignes "
-        f"{empty[:3]} : le corridor A→B était vide et la question a tout de "
-        f"même été ajoutée"
-    )
-
-
-@pytest.mark.parametrize("nb_q", [40, 110])
+@defect("quota_multiplie_par_la_boucle_interne")
+@pytest.mark.parametrize("nb_q", [10, 14])
 def test_point_near_metric_honours_nb_q(df_osm, nb_q):
-    """`nb_q` pilote bien le nombre de questions produites.
+    """`nb_q` doit piloter le nombre de questions, pas le nombre d'ancres.
 
-    Le générateur divisait `nb_q` par la *somme* `len(list_cat) + len(
-    list_distance)` alors que sa boucle parcourt leur *produit* : il rendait
-    240 questions pour nb_q=110. Corrigé par l'allocation sur les cellules
-    (catégorie d'ancre × catégorie interrogée), qui alloue directement le
-    budget au lieu de le diviser à l'aveugle — mesuré 8 / 40 / 108 pour
-    nb_q 10 / 40 / 110. Ce test garde la propriété.
+    La boucle tire `nb_q` ancres puis décline chacune sur les quatre rayons de
+    `list_distance`, sans diviser le quota : mesuré 40 questions pour nb_q=10 et
+    56 pour nb_q=14, soit exactement 4×. La faute existait avant f1be9c1 sous
+    une autre forme — le quota était divisé par la *somme* au lieu du produit —
+    et le refactor l'a réintroduite en supprimant la division.
     """
     from benchmark_pipeline.generator.template_question.geospatial.point_near_metric import (
         make_question_point_near_metric,
@@ -122,15 +79,15 @@ def test_point_near_metric_honours_nb_q(df_osm, nb_q):
     )
 
 
-@defect("point_near_cardinal_quota")
-@pytest.mark.parametrize("nb_q", [10, 40])
+@defect("quota_multiplie_par_la_boucle_interne")
+@pytest.mark.parametrize("nb_q", [10, 14])
 def test_point_near_cardinal_honours_nb_q(df_osm, nb_q):
-    """Même faute de quota que `point_near_metric`, en pire.
+    """Même faute de quota, avec les quatre secteurs cardinaux.
 
-    La boucle parcourt catégories × 4 directions et divise par leur somme : le
-    jeu produit est environ 4× la commande. Le facteur n'est pas constant — il
-    sature quand le corpus s'épuise — donc on ne peut même pas le corriger
-    après coup en tronquant.
+    Mesuré 40 questions pour nb_q=10 et 56 pour nb_q=14. Le facteur est
+    constant, donc tronquer après coup rééquilibrerait le volume — mais pas la
+    répartition : les quatre secteurs d'une même ancre sont consécutifs, et
+    couper dans le tas amputerait les dernières ancres de leurs directions.
     """
     from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
         make_question_point_near_cardinal,
@@ -143,34 +100,36 @@ def test_point_near_cardinal_honours_nb_q(df_osm, nb_q):
     )
 
 
-@defect("area_direction_quota")
-def test_area_direction_honours_nb_q(df_osm, df_area):
-    """Idem pour `area_direction`, dont la condition d'arrêt est inatteignable.
+@defect("quota_multiplie_par_la_boucle_interne")
+@pytest.mark.parametrize("nb_q", [10, 14])
+def test_area_direction_honours_nb_q(df_osm, df_area, nb_q):
+    """Idem pour `area_direction` : `nb_q` zones × 4 directions.
 
-    `while nq != n_queries_per_stratum` avec une boucle interne de 4 directions :
-    `nq` avance de 4 en 4 et enjambe le quota sans jamais l'égaler. Seul le
-    plafond de 200 tentatives finit par arrêter la boucle.
+    Mesuré 40 pour nb_q=10 et 56 pour nb_q=14. C'est une amélioration par
+    rapport à l'état d'avant f1be9c1, où la condition d'arrêt `while nq !=
+    n_queries_per_stratum` était inatteignable et le volume partait dans tous
+    les sens (802 questions pour nb_q=10, 135 pour nb_q=40) : il est désormais
+    faux mais prévisible, cf. `test_area_direction_volume_grows_with_nb_q`.
     """
     from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
         make_question_area_direction,
     )
 
-    nb_q = 40
     bench = make_question_area_direction(df_osm, df_area, nb_q=nb_q, seed=42)
     assert len(bench) == pytest.approx(nb_q, rel=0.25), (
-        f"nb_q={nb_q} demandé, {len(bench)} questions produites"
+        f"nb_q={nb_q} demandé, {len(bench)} questions produites "
+        f"(facteur {len(bench) / nb_q:.2f})"
     )
 
 
-@defect("area_direction_quota")
 def test_area_direction_volume_grows_with_nb_q(df_osm, df_area):
-    """À défaut du quota exact, le volume devrait au moins être monotone.
+    """À défaut du quota exact, le volume doit au moins être monotone.
 
-    Demander plus de questions doit en produire au moins autant. Ici la
-    condition d'arrêt dépend du plafond de tentatives et non du quota, donc le
-    volume part dans tous les sens — mesuré : 802 questions pour nb_q=10 mais
-    135 pour nb_q=40. C'est le symptôme le plus lisible du défaut : même en
-    renonçant à la valeur exacte, le générateur n'est pas pilotable.
+    Démontrait un défaut jusqu'à f1be9c1 : la condition d'arrêt dépendait du
+    plafond de tentatives et non du quota, donc demander plus de questions
+    pouvait en produire moins (802 pour nb_q=10, 135 pour nb_q=40). Le tirage
+    est maintenant une simple boucle sur `nb_q` zones — mesuré 40, 56 et 72
+    pour nb_q 10, 14 et 18. Le test reste comme garde-fou.
     """
     from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
         make_question_area_direction,
@@ -178,22 +137,43 @@ def test_area_direction_volume_grows_with_nb_q(df_osm, df_area):
 
     volumes = [
         len(make_question_area_direction(df_osm, df_area, nb_q=n, seed=42))
-        for n in (10, 40)
+        for n in (10, 14, 18)
     ]
-    assert volumes[0] <= volumes[1], (
-        f"nb_q=10 produit {volumes[0]} questions et nb_q=40 seulement "
-        f"{volumes[1]} : le volume décroît quand la commande augmente"
+    assert volumes == sorted(volumes), (
+        f"volumes {volumes} pour nb_q 10/14/18 : le volume décroît quand la "
+        f"commande augmente"
+    )
+
+
+@defect("quota_arrondi_par_strate")
+@pytest.mark.parametrize("nb_q", [12, 14])
+def test_area_outside_honours_a_nb_q_not_divisible_by_the_categories(df_osm, df_area, nb_q):
+    """`nb_q // len(list_cat)` perd le reste de la division.
+
+    Trois templates fixent ainsi leur quota par strate. Sur 5 catégories, tout
+    `nb_q` entre 10 et 14 rend 10 questions : le reste est simplement jeté.
+    `ratio.allocate` règle exactement ce cas — il répartit le reste sur les plus
+    fortes parties fractionnaires — et n'est utilisé que par `point_between`.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.area_outside import (
+        make_question_area_outside,
+    )
+
+    bench = make_question_area_outside(df_osm, df_area, nb_q=nb_q, seed=42)
+    assert len(bench) == nb_q, (
+        f"nb_q={nb_q} demandé, {len(bench)} questions produites : le reste de "
+        f"{nb_q} // 5 est perdu"
     )
 
 
 @defect("street_cross_sous_production")
-@pytest.mark.parametrize("nb_q", [10, 40])
+@pytest.mark.parametrize("nb_q", [10, 14])
 def test_street_cross_honours_nb_q(df_osm, df_streets, nb_q):
     """`street_cross` doit atteindre son quota comme les autres templates.
 
     Le défaut est ici l'inverse des précédents : le tirage exige deux rues
     sécantes *et* des POIs près du croisement, et abandonne la strate au lieu de
-    retirer une autre paire. Mesuré : 7 questions pour nb_q=10, 25 pour 40.
+    retirer une autre paire. Mesuré : 7 questions pour nb_q=10.
 
     Les fixtures n'offrent qu'un seul vrai croisement, donc une part du déficit
     leur est imputable — d'où la tolérance large. Mais un template qui rend la
@@ -211,69 +191,280 @@ def test_street_cross_honours_nb_q(df_osm, df_streets, nb_q):
     )
 
 
-# --------------------------------------------------------------------------- #
-# entrées absurdes acceptées en silence
-# --------------------------------------------------------------------------- #
+def test_point_between_honours_nb_q(df_osm):
+    """`point_between` rend exactement le nombre de questions demandé.
 
-@defect("area_direction_test_de_sous_chaine")
-@pytest.mark.parametrize("bogus", ["north s", "h so", "outh wes", ""])
-def test_direction_area_rejects_unknown_directions(df_osm, df_area, bogus):
-    """Une direction inconnue doit lever, pas être interprétée au hasard.
-
-    `direction in "north south"` teste une **sous-chaîne** : il répond vrai pour
-    `"north s"` comme pour `""`. La fonction trie alors sur un axe choisi par
-    accident au lieu de signaler l'erreur. Même faute ligne suivante, où
-    `("south west")` est une chaîne entre parenthèses et non un tuple.
+    Il a longtemps dépassé le quota d'une boucle de catégories d'ancre (15
+    questions pour nb_q=10). La stratification par `ratio.allocate` sur les
+    couples (catégorie de A, catégorie de B) réellement présents dans les
+    voisinages a réglé ça : mesuré 10, 14 et 110 pour ces mêmes `nb_q`. C'est
+    aujourd'hui le seul template dont le volume est exact — d'où ce test de
+    non-régression, qui fixe la référence pour les autres.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_direction import direction_area
-
-    area = df_area.geometry.iloc[0]
-    with pytest.raises((KeyError, ValueError)):
-        direction_area(df_osm, area, bogus)
-
-
-@defect("point_near_cardinal_garde_fou_off_by_one")
-def test_point_near_cardinal_accepts_its_announced_minimum(df_osm):
-    """Le plancher refusé est celui que le message annonce comme valide.
-
-    Le garde-fou est justifié — sous 20, `nb_q_anc // len(list_direction)` vaut
-    0 et le tirage ne rend rien — mais il s'écrit `<=` au lieu de `<`. La suite
-    contourne l'écart en appelant ce template à 21 (`conftest.TEMPLATE_NB_Q`).
-    """
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
-        make_question_point_near_cardinal,
+    from benchmark_pipeline.generator.template_question.geospatial.point_between import (
+        make_question_point_between,
     )
 
-    bench = make_question_point_near_cardinal(df_osm, nb_q=20, seed=42)
-    assert len(bench) > 0
+    for nb_q in (10, 14):
+        bench = make_question_point_between(df_osm, nb_q=nb_q, seed=42)
+        assert len(bench) == nb_q, (
+            f"nb_q={nb_q} demandé, {len(bench)} questions produites"
+        )
+
+
+def test_point_between_has_no_empty_answers_at_full_size(df_osm):
+    """Aucune question d'entre-deux ne doit être livrée sans réponse.
+
+    Le tirage écarte les couples dont le corridor est vide (`if results.empty:
+    continue`, point_between.py:151) au lieu de publier la question quand même.
+    Le test reste à `nb_q=110`, taille à laquelle le défaut se reproduisait
+    (3 questions vides sur 130) — c'est là qu'une régression se verrait, pas à
+    `nb_q=10`.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.point_between import (
+        make_question_point_between,
+    )
+    from benchmark_pipeline.generator.template_question.schema import _as_list
+
+    bench = make_question_point_between(df_osm, nb_q=110, seed=42)
+    empty = [i for i, row in bench.iterrows()
+             if not _as_list(row["results_poi_id"])]
+    assert not empty, (
+        f"{len(empty)}/{len(bench)} questions sans réponse, ex. lignes "
+        f"{empty[:3]} : le corridor A→B était vide et la question a tout de "
+        f"même été ajoutée"
+    )
 
 
 # --------------------------------------------------------------------------- #
-# classement dégénéré : la distance ne discrimine rien
+# tirage des zones : borné par nb_q au lieu du corpus
 # --------------------------------------------------------------------------- #
 
-@defect("area_border_mesure_le_polygone_plein")
+@defect("area_echantillonnage_borne")
+@pytest.mark.parametrize("template", ["area_inside", "area_direction"])
+def test_area_templates_survive_a_small_area_corpus(df_osm, df_area, template):
+    """Moins de zones que de questions demandées ne doit pas faire lever.
+
+    `rng.choice(n, size=nb_q, replace=False)` exige `n >= nb_q`. Un corpus de
+    trois zones — ce que produit n'importe quel filtrage un peu strict, et ce
+    que contenaient les fixtures avant ce commit — fait donc lever les deux
+    templates au lieu de leur faire rendre les trois questions possibles.
+    """
+    import importlib
+
+    module = importlib.import_module(
+        f"benchmark_pipeline.generator.template_question.geospatial.{template}"
+    )
+    generateur = getattr(module, f"make_question_{template}")
+
+    bench = generateur(df_osm, df_area.head(3), nb_q=10, seed=42)
+    assert not bench.empty
+
+
+@defect("area_echantillonnage_borne")
+def test_area_inside_can_draw_every_area(df_osm, df_area):
+    """Toute zone du corpus doit être tirable, pas seulement les `nb_q` premières.
+
+    `rng.choice(min(len(areas), nb_q), size=nb_q, …)` tire dans `range(nb_q)` et
+    non dans les zones : passé la `nb_q`-ième, aucune zone n'est atteignable,
+    quelle que soit la graine. Mesuré : 10 zones distinctes sur 18, identiques
+    d'une graine à l'autre sur 30 tirages.
+
+    Conséquence pour le benchmark : la couverture spatiale du jeu est décidée
+    par l'ordre des lignes de `df_area`, pas par le tirage.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.area_inside import (
+        make_question_area_inside,
+    )
+
+    tirees = set()
+    for seed in range(30):
+        tirees |= set(make_question_area_inside(df_osm, df_area, nb_q=10,
+                                                seed=seed)["area_name"])
+
+    eligibles = set(df_area[df_area.geometry.area > 1000]["area_name"])
+    jamais = sorted(eligibles - tirees)
+    assert not jamais, (
+        f"{len(jamais)}/{len(eligibles)} zones ne sortent sur aucune des 30 "
+        f"graines, ex. {jamais[:3]}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# vérité terrain : la bonne relation, mais pas sur les bons POIs
+# --------------------------------------------------------------------------- #
+
+def test_point_near_metric_publishes_only_its_own_radius(df_osm):
+    """Chaque ligne ne porte que le lot de son propre rayon.
+
+    La boucle calculait `result = results[results["distance"] == d]` puis publiait
+    `results` : les quatre lots concaténés, identiques sur les quatre lignes d'une
+    même ancre. Corrigé — ce test garde la propriété, et isole la cause (quatre
+    lignes rigoureusement identiques) là où `test_benchmark_is_coherent` n'en
+    voyait que les symptômes, doublons et distances décroissantes.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.point_near_metric import (
+        make_question_point_near_metric,
+    )
+
+    bench = make_question_point_near_metric(df_osm, nb_q=10, seed=42)
+    identiques = [
+        (ancre, sorted(group["distance"]))
+        for ancre, group in bench.groupby("anchor_index")
+        if group["results_poi_id"].apply(tuple).nunique() == 1 and len(group) > 1
+    ]
+    assert not identiques, (
+        f"{len(identiques)}/{bench['anchor_index'].nunique()} ancres ont la "
+        f"même réponse pour tous leurs rayons ; ex. ancre {identiques[0][0]}, "
+        f"rayons {identiques[0][1]}"
+    )
+
+
+@incoherent("area_border")
+def test_border_area_filters_by_the_requested_category(df_osm, df_area):
+    """`pois_near_border` doit rendre la catégorie que l'énoncé demande.
+
+    Le helper a perdu son paramètre de catégorie au passage de `border_area` à
+    `pois_near_border` : il rend tous les POIs de la bande, quelle que soit leur
+    catégorie, alors que l'énoncé et `category_query` en annoncent une. Mesuré :
+    les 10 questions d'un tirage à nb_q=10 contiennent des POIs hors catégorie.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.area_border import (
+        make_question_area_border,
+    )
+
+    bench = make_question_area_border(df_osm, df_area, nb_q=10, seed=42)
+    categorie = df_osm.set_index("poi_id")["category"]
+
+    fautives = [
+        (i, row["category_query"],
+         sorted({categorie[p] for p in row["results_poi_id"]}))
+        for i, row in bench.iterrows()
+        if any(categorie[p] != row["category_query"] for p in row["results_poi_id"])
+    ]
+    assert not fautives, (
+        f"{len(fautives)}/{len(bench)} questions mélangent les catégories ; "
+        f"ex. ligne {fautives[0][0]} demande {fautives[0][1]!r} et répond "
+        f"{fautives[0][2]}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# classement dégénéré : le rang n'ordonne rien
+# --------------------------------------------------------------------------- #
+
+@defect("area_direction_rang_sans_classement")
+def test_area_direction_rank_is_a_ranking(df_osm, df_area):
+    """Le rang publié doit refléter un classement, pas l'ordre du corpus.
+
+    `segregate_pois` masque sans trier : `results_poi_rank` numérote donc
+    l'ordre d'apparition dans `df_osm`. Mesuré : les 33 réponses de plus d'un
+    POI d'un tirage à nb_q=10 sont toutes dans l'ordre du corpus.
+
+    Le test compare à cet ordre plutôt qu'à un classement attendu : on ne sait
+    pas quel critère le template *devrait* employer (distance au centroïde,
+    avancement le long de l'axe), mais on sait qu'il n'en emploie aucun.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
+        make_question_area_direction,
+    )
+
+    bench = make_question_area_direction(df_osm, df_area, nb_q=10, seed=42)
+    position = {poi_id: i for i, poi_id in enumerate(df_osm["poi_id"])}
+
+    non_triviales = [r for _, r in bench.iterrows() if len(r["results_poi_id"]) > 1]
+    ordre_corpus = [r for r in non_triviales
+                    if [position[p] for p in r["results_poi_id"]]
+                    == sorted(position[p] for p in r["results_poi_id"])]
+    assert len(ordre_corpus) < len(non_triviales), (
+        f"les {len(non_triviales)} réponses de plus d'un POI sont toutes dans "
+        f"l'ordre de df_osm : aucun classement n'a été appliqué"
+    )
+
+
 def test_border_area_separates_interior_from_boundary(df_osm, df_area):
-    """`border_area` doit distinguer un POI du bord d'un POI du centre.
+    """`pois_near_border` distingue un POI du bord d'un POI du centre.
 
     Mesurée contre le polygone **plein**, la distance vaut 0 partout à
-    l'intérieur : un POI au centre exact de la zone est donné aussi « en
-    bordure » que celui collé au pourtour. Contre `area.boundary`, les deux se
-    séparent — c'est le sens même de la question.
+    l'intérieur : un POI au centre exact de la zone était donné aussi « en
+    bordure » que celui collé au pourtour. `pois_near_border` mesure contre
+    `area.boundary` depuis f1be9c1 — mesuré sur le Parc Carre : 24 POIs
+    intérieurs, 20 distances distinctes entre 43,2 et 151,6 m. Ce test garde la
+    correction.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_border import border_area
+    from benchmark_pipeline.generator.template_question.geospatial.area_border import (
+        pois_near_border,
+    )
 
     area = df_area.geometry.iloc[0]
-    results = border_area(area, "cafe", df_osm)
-    inside = results[results["poi_id"].isin(
-        df_osm["poi_id"][df_osm.geometry.within(area)]
-    )]
+    results = pois_near_border(df_osm, area, band=200)
+    inside = results[results.geometry.within(area)]
     if len(inside) < 2:
         pytest.skip("pas assez de POIs intérieurs pour comparer")
 
     assert inside["dist"].nunique() > 1, (
         f"les {len(inside)} POIs intérieurs sont tous à distance "
         f"{inside['dist'].iloc[0]} : la bordure n'est pas mesurée"
+    )
+
+
+def test_interior_point_is_at_zero_distance_from_its_polygon(df_area):
+    """Rappel exécutable de la cause des classements dégénérés.
+
+    C'est cette propriété de shapely — et non un bug — qui rend `area_inside`
+    incapable d'ordonner quoi que ce soit tant qu'il mesure contre le polygone
+    plein. `area_border` s'en est sorti en mesurant contre `.boundary`.
+    """
+    area = df_area.geometry.iloc[0]
+    centre = area.centroid
+
+    assert centre.distance(area) == 0.0
+    assert centre.distance(area.boundary) > 0.0
+    assert np.isclose(centre.distance(area.boundary), 200.0), (
+        "le centre du Parc Carre (400x400 m) est à 200 m de son pourtour"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# entrées absurdes
+# --------------------------------------------------------------------------- #
+
+@pytest.mark.parametrize("bogus", ["north s", "h so", "outh wes", ""])
+def test_segregate_pois_rejects_unknown_directions(df_osm, df_area, bogus):
+    """Une direction inconnue doit lever, pas être interprétée au hasard.
+
+    `direction_area` testait `direction in "north south"`, c'est-à-dire une
+    **sous-chaîne** : il répondait vrai pour `"north s"` comme pour `""`, et
+    triait alors sur un axe choisi par accident. `segregate_pois` indexe un
+    dictionnaire de masques, donc lève KeyError — ce test garde la correction,
+    parce que la faute d'origine est invisible à la relecture.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
+        segregate_pois,
+    )
+
+    with pytest.raises(KeyError):
+        segregate_pois(df_osm, df_area.geometry.iloc[0], [bogus])
+
+
+@pytest.mark.parametrize("nb_q", [1, 3, 20])
+def test_point_near_cardinal_accepts_any_nb_q(df_osm, nb_q):
+    """Aucun plancher arbitraire sur `nb_q`.
+
+    Le module refusait `nb_q <= 20` en annonçant « nb_q doit être ≥ 20 » : il
+    rejetait la valeur que son propre message donnait pour valide, et la suite
+    devait le lancer à 21 via une table d'exceptions dans `conftest`. Le
+    garde-fou a disparu avec la réécriture du tirage, qui n'a plus de division
+    entière à protéger.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
+        make_question_point_near_cardinal,
+    )
+
+    bench = make_question_point_near_cardinal(df_osm, nb_q=nb_q, seed=42)
+    assert len(bench) == 4 * nb_q, (
+        f"nb_q={nb_q} : {len(bench)} questions, attendu 4 × {nb_q} "
+        f"(une par direction)"
     )
 
 
@@ -285,12 +476,12 @@ def test_border_area_separates_interior_from_boundary(df_osm, df_area):
 def test_opposite_side_handles_multilinestring_streets(df_osm):
     """Une rue en plusieurs tronçons doit rester tirable.
 
-    Le filtre écrit `"MultiString"` (street_opposite_side.py:109), type de
+    Le filtre écrit `"MultiString"` (street_opposite_side.py:127), type de
     géométrie qui n'existe pas dans shapely : aucune MultiLineString ne le
     franchit. Sur un corpus qui n'en contient que, le tirage devient vide. Or
     `load_streets` produit bien des MultiLineString — les rues coupées par une
     place ou un carrefour — et le reste du module sait les traiter, puisque
-    `side_of_street` et `cross_along` prennent explicitement `geoms[0]`.
+    `side_of_street` et `opposite_side` prennent explicitement `geoms[0]`.
     """
     from benchmark_pipeline.generator.template_question.geospatial.street_opposite_side import (
         make_question_street_opposite_side,
@@ -329,7 +520,9 @@ def test_touching_streets_only_returns_real_crossings():
     `intersection()` est alors vide, et `distance()` contre une géométrie vide
     vaut NaN : toute la vérité terrain de la question perd son ordre.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_cross import touching_streets
+    from benchmark_pipeline.generator.template_question.geospatial.street_cross import (
+        touching_streets,
+    )
 
     # deux segments parallèles distants de 0,5 m : proches, mais disjoints
     streets = gpd.GeoDataFrame(
@@ -356,13 +549,15 @@ def test_touching_streets_only_returns_real_crossings():
 def test_street_modules_agree_on_street_identity(df_osm, df_streets):
     """Les deux modules « rue » doivent identifier une rue de la même façon.
 
-    `street_along.py:73` tire dans `df_streets.index` ; `street_cross.py:83-84`
+    `street_along.py:58` tire dans `df_streets.index` ; `street_cross.py:71-72`
     tire une *valeur* de `id_street` et la passe à `.loc`, ce qui n'est correct
     que si l'index et la colonne coïncident. Sur un `df_streets` réindexé — ce
     que fait n'importe quel filtrage en amont — le second se trompe de rue en
     silence, ou lève.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_cross import make_question_street_cross
+    from benchmark_pipeline.generator.template_question.geospatial.street_cross import (
+        make_question_street_cross,
+    )
 
     # index volontairement décorrélé de id_street, comme après un filtrage
     shuffled = df_streets.copy()
@@ -378,19 +573,20 @@ def test_street_modules_agree_on_street_identity(df_osm, df_streets):
 
 
 # --------------------------------------------------------------------------- #
-# stratification : le helper que `point_between` est en train d'adopter
+# stratification : le helper que les templates devraient tous adopter
 # --------------------------------------------------------------------------- #
 #
-# `benchmark_pipeline/generator/template_question/ratio.py` n'a pas de test, alors que `point_between`
-# s'appuie dessus pour répartir les questions entre catégories. Les cinq tests
-# qui suivent fixent son contrat avant que les autres templates l'adoptent.
+# `ratio.allocate` n'a pas de test ailleurs, alors que `point_between` — le seul
+# template dont le volume soit exact — s'appuie dessus. Les cinq tests qui
+# suivent fixent son contrat pour les templates qui restent à y passer.
 
 def test_allocate_distributes_exactly_n():
     """La somme des parts vaut exactement `n`, sans perte à l'arrondi.
 
     C'est toute la raison d'être de la méthode des plus forts restes : un
     `round()` naïf par catégorie perdrait ou inventerait des questions, et le
-    benchmark ne ferait plus la taille commandée.
+    benchmark ne ferait plus la taille commandée. C'est exactement ce que fait
+    le `nb_q // len(list_cat)` d'`area_outside` et consorts.
     """
     from benchmark_pipeline.generator.template_question.ratio import allocate
 
@@ -461,28 +657,15 @@ def test_allocate_rejects_weights_that_sum_to_zero():
 # non-régression : ce qui a été réparé doit le rester
 # --------------------------------------------------------------------------- #
 
-def test_street_cross_module_has_no_import_side_effect():
-    """Importer un module de template ne doit rien exécuter.
+def test_every_template_module_imports_cleanly():
+    """Les douze modules s'importent sans effet de bord.
 
     Le bas de `street_cross.py` avait gardé l'appel du notebook
     (`bench4=make_question_crossstreet(df_osm, df_streets)`) : importer le
     module tentait de générer un benchmark avec des variables inexistantes, et
-    aucun autre module ne pouvait s'en servir. Corrigé — ce test garde la
-    propriété, parce que la faute revient à chaque template sorti d'un notebook.
-    """
-    import importlib
-
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
-
-    importlib.import_module(TEMPLATES_BY_NAME["street_cross"].module)
-
-
-def test_every_template_module_imports_cleanly():
-    """Les douze modules s'importent sans effet de bord, pas seulement un.
-
-    Généralise le test précédent : c'est le paquet entier qui doit être
-    importable, puisque `geospatial/__init__.py` les importe tous pour peupler le
-    registre par décorateur.
+    aucun autre module ne pouvait s'en servir. C'est le paquet entier qui doit
+    être importable, puisque `geospatial/__init__.py` les importe tous pour
+    peupler le registre par décorateur.
     """
     import importlib
 
@@ -528,20 +711,3 @@ def test_cardinal_azimuth_convention_is_clockwise_from_north():
     assert azimuth_deg(0, 0, 1, 0) == pytest.approx(90.0)     # est
     assert azimuth_deg(0, 0, 0, -1) == pytest.approx(180.0)   # sud
     assert azimuth_deg(0, 0, -1, 0) == pytest.approx(270.0)   # ouest
-
-
-def test_interior_point_is_at_zero_distance_from_its_polygon(df_area):
-    """Rappel exécutable de la cause des classements dégénérés.
-
-    C'est cette propriété de shapely — et non un bug — qui rend
-    `inside_area`/`border_area` incapables d'ordonner quoi que ce soit tant
-    qu'ils mesurent contre le polygone plein.
-    """
-    area = df_area.geometry.iloc[0]
-    centre = area.centroid
-
-    assert centre.distance(area) == 0.0
-    assert centre.distance(area.boundary) > 0.0
-    assert np.isclose(centre.distance(area.boundary), 200.0), (
-        "le centre du Parc Carre (400x400 m) est à 200 m de son pourtour"
-    )

@@ -21,25 +21,48 @@ from benchmark_pipeline.utils.dataset_io import (
 )
 
 gpd = pytest.importorskip("geopandas")
-from shapely.geometry import LineString, Point, box  # noqa: E402
+from shapely.geometry import LineString, Point, box
 
 
 @pytest.fixture(scope="module")
 def bench(df_osm):
-    """Un vrai benchmark, produit par le seul template aujourd'hui sain."""
-    from benchmark_pipeline.generator.template_question.geospatial.point_near import make_question_point_near
+    """Un vrai benchmark, produit par le template au contrat le plus simple.
+
+    `point_near` n'a ni géométrie ni colonne annexe : c'est le cas de base de
+    l'aller-retour. Les géométries sont couvertes par `bench_with_geometries`
+    et, sur une sortie réelle, par `real_bench_with_geometry`.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.point_near import (
+        make_question_point_near,
+    )
 
     return make_question_point_near(df_osm, nb_q=10, seed=42)
+
+
+@pytest.fixture(scope="module")
+def real_bench_with_geometry(df_osm, df_streets):
+    """Benchmark réel portant une colonne géométrique.
+
+    `street_along` publie `street_geometry`, parfois une `MultiLineString` : de
+    quoi éprouver l'encodage WKB sur une sortie de générateur, et pas seulement
+    sur une frame écrite à la main.
+    """
+    from benchmark_pipeline.generator.template_question.geospatial.street_along import (
+        make_question_street_along,
+    )
+
+    return make_question_street_along(df_osm, df_streets, nb_q=10, seed=42)
 
 
 @pytest.fixture
 def bench_with_geometries():
     """Benchmark artificiel couvrant tous les cas tordus de l'encodage.
 
-    Les templates sains ne produisent pas de colonne géométrique ; ceux qui en
-    produisent sont cassés. Cette frame reproduit donc à la main ce que
-    `area_*` et `street_*` publieront une fois réparés — plusieurs colonnes
-    `*_geometry` sur la même ligne, des types différents, et des trous.
+    Aucun générateur ne publie plusieurs colonnes `*_geometry` sur une même
+    ligne : c'est la *concaténation* des douze templates en un benchmark unique
+    qui produit cette forme, avec un trou partout où la ligne vient d'un autre
+    template. Cette frame la reproduit à la main — plusieurs colonnes
+    géométriques, des types différents, et des `None`.
     """
     return pd.DataFrame({
         "query": ["cafe inside Parc", "bar across rue X from poi7"],
@@ -116,12 +139,37 @@ def test_loaded_benchmark_is_still_plottable(bench, tmp_path, df_osm):
     invisibles.
     """
     pytest.importorskip("matplotlib")
-    from benchmark_pipeline.generator.template_question.schema import validate_benchmark
+    from tests.conftest import coherence_problems
 
     path = save_benchmark(bench, tmp_path / "b.parquet", df_osm=df_osm)
     back = load_benchmark(path)
 
-    assert not validate_benchmark(back, df_osm, allow_empty=True)
+    # `point_near` ne publie plus `category_query` : passer par le helper de
+    # conftest, sinon `validate_benchmark` s'arrête sur la colonne manquante et
+    # le test vaudrait pour n'importe quelle frame relue.
+    problems = coherence_problems(back, TEMPLATES_BY_NAME["point_near"], df_osm)
+    assert not problems, "\n  - ".join(["benchmark relu incohérent :"] + problems)
+
+
+def test_roundtrip_of_a_real_generator_output_with_geometry(real_bench_with_geometry,
+                                                           tmp_path, df_osm):
+    """Une sortie de générateur portant une géométrie survit à l'aller-retour.
+
+    `bench_with_geometries` est écrite à la main : elle teste l'encodeur, pas
+    l'accord entre l'encodeur et ce que les templates produisent vraiment. Les
+    rues des fixtures comprennent une `MultiLineString`, type que `to_wkb` et
+    `from_wkb` doivent rendre à l'identique.
+    """
+    path = save_benchmark(real_bench_with_geometry, tmp_path / "street_along.parquet",
+                          df_osm=df_osm)
+    back = load_benchmark(path)
+
+    for i, geometry in enumerate(real_bench_with_geometry["street_geometry"]):
+        assert back["street_geometry"][i].equals(geometry), (
+            f"ligne {i} : la géométrie de rue n'a pas survécu à l'aller-retour"
+        )
+    assert back["results_poi_id"].tolist() == \
+        real_bench_with_geometry["results_poi_id"].tolist()
 
 
 # --------------------------------------------------------------------------- #

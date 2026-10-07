@@ -22,7 +22,7 @@ from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.features import OutDoorSeating, InDoorSeating, CookingType, Category
 
 
-def generate_question(poi, n_features, features=FEATURES):
+def generate_question(poi, n_features, nb_question, features=FEATURES):
     """
     Génère toutes les combinaisons de questions possibles pour un POI donné.
 
@@ -46,8 +46,6 @@ def generate_question(poi, n_features, features=FEATURES):
         multi-valuée rend une liste, aplatie par `extend`. C'est pourquoi la
         garde porte sur `len(available)` et non sur `len(features)`.
     """
-    # Calcule tous les fragments disponibles pour ce POI
-    # (fragment, colonne, valeur attendue)
     available = []
     for feature in features:
         value = feature.check(poi)
@@ -55,7 +53,6 @@ def generate_question(poi, n_features, features=FEATURES):
         if text is None or text == "nan" or text == "":
             continue
         if isinstance(text, list):
-            # feature multi-valuée : une contrainte par sous-valeur
             available.extend((t, feature.COLUMN, v) for t, v in zip(text, value))
         else:
             available.append((text, feature.COLUMN, value))
@@ -77,7 +74,7 @@ def generate_question(poi, n_features, features=FEATURES):
 
 
 
-def make_questions_semantic(df_osm, features, rng=None, seed=42):
+def make_questions_semantic(df_osm, features, nb_question, rng=None, seed=42):
     """Tire un jeu de questions sémantiques, stratifié par nombre d'attributs.
 
     La strate n'est pas la catégorie de POI mais le **nombre d'attributs
@@ -94,7 +91,7 @@ def make_questions_semantic(df_osm, features, rng=None, seed=42):
         df_osm (DataFrame): Corpus de POIs, avec `poi_id`, `category` et les
             colonnes que lisent les `features`.
         features (list[Feature]): Features à évaluer sur chaque POI.
-        nb_question (int): Nombre total de questions visé.
+        nb_question (int): Nombre de question par nb de features
         ratio (dict[int, int] | None): Nombre de questions par strate, la clé
             étant le nombre d'attributs combinés. Par défaut, équirépartition
             sur 1..len(FEATURES).
@@ -110,7 +107,7 @@ def make_questions_semantic(df_osm, features, rng=None, seed=42):
     dic_question = defaultdict(list)
     for _, row in df_osm.iterrows():
         for nb_feat in range(1, len(features)+1):
-            genere = generate_question(row, nb_feat, features)
+            genere = generate_question(row, nb_feat, features, nb_question)
             if not genere:
                 continue
             questions, contraintes = genere

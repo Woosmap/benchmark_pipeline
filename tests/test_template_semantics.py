@@ -6,15 +6,23 @@ shapely purs, sans repasser par DuckDB ni par les helpers du template. Comparer
 les deux attrape ce qu'aucun contrôle de forme ne voit — une requête SQL bien
 formée qui ne calcule pas la relation annoncée par l'énoncé.
 
+Huit des douze templates ne filtrent plus par catégorie depuis f1be9c1 : leur
+énoncé demande « pois », et l'oracle porte donc sur tout le corpus. Les quatre
+autres — `area_outside`, `area_border`, `street_cross`, `street_opposite_side` —
+gardent une catégorie, cf. `conftest.CATEGORY_FREE_TEMPLATES`.
+
 Les templates aujourd'hui cassés portent un `xfail(strict=True)` : l'oracle est
 écrit quand même, et se mettra à vérifier pour de bon dès que le générateur
-tournera.
+sera réparé.
 """
 
 import numpy as np
 import pytest
 
-from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME, _as_list
+from benchmark_pipeline.generator.template_question.schema import (
+    TEMPLATES_BY_NAME,
+    _as_list,
+)
 from tests.conftest import angular_gap_deg, azimuth_deg
 from tests.known_defects import BROKEN_TEMPLATES, SEMANTIC_DEFECTS, merge_reasons
 
@@ -46,12 +54,19 @@ def bench_of(name, run_template):
     return run_template(TEMPLATES_BY_NAME[name])
 
 
-def category_subset(df_osm, category, exclude=()):
-    """POIs d'une catégorie, moins les `poi_id` exclus."""
-    sub = df_osm[df_osm["category"] == category]
-    if len(exclude):
-        sub = sub[~sub["poi_id"].isin(exclude)]
-    return sub
+def corpus_without(df_osm, exclude=()):
+    """Le corpus entier, moins les `poi_id` exclus.
+
+    Args:
+        df_osm (GeoDataFrame): Le corpus.
+        exclude (iterable): `poi_id` à retirer — typiquement les ancres, qu'un
+            template ne doit jamais mettre dans sa propre réponse.
+
+    Returns:
+        GeoDataFrame: Le sous-ensemble.
+    """
+    exclude = list(exclude)
+    return df_osm[~df_osm["poi_id"].isin(exclude)] if exclude else df_osm
 
 
 # --------------------------------------------------------------------------- #
@@ -60,17 +75,20 @@ def category_subset(df_osm, category, exclude=()):
 
 @oracle_for("point_near", BROKEN_TEMPLATES)
 def test_point_near_matches_bruteforce_knn(run_template, df_osm):
-    """« X près de Y » classe bien les X par distance croissante à Y.
+    """« pois près de Y » classe bien tout le corpus par distance croissante à Y.
 
-    Oracle : tri par `np.hypot` sur toute la catégorie. Le jitter des fixtures
-    garantit qu'aucune paire de distances n'est ex æquo, donc l'ordre attendu
-    est unique et la comparaison peut porter sur les identifiants eux-mêmes.
+    Oracle : tri par `np.hypot` sur l'ensemble des POIs, ancre retirée. Le
+    jitter des fixtures garantit qu'aucune paire de distances n'est ex æquo,
+    donc l'ordre attendu est unique et la comparaison peut porter sur les
+    identifiants eux-mêmes.
+
+    Le template ne filtre plus par catégorie : `near_sql` est appelé avec
+    `cat=None` (point_near.py:72), donc la vérité terrain est le corpus entier.
     """
     bench = bench_of("point_near", run_template)
 
     for i, row in bench.iterrows():
-        exclude = [row["anchor_index"]] if row["same_cat"] else []
-        sub = category_subset(df_osm, row["category_query"], exclude)
+        sub = corpus_without(df_osm, [row["anchor_index"]])
         dist = np.hypot(sub["x"] - row["anchor_x"], sub["y"] - row["anchor_y"])
         order = np.argsort(dist.to_numpy(), kind="stable")
 
@@ -90,12 +108,16 @@ def test_point_near_matches_bruteforce_knn(run_template, df_osm):
 
 @oracle_for("point_near_metric", BROKEN_TEMPLATES)
 def test_point_near_metric_respects_its_radius(run_template, df_osm):
-    """« X à moins de d mètres de Y » : rayon respecté, et exhaustif.
+    """« pois à moins de d mètres de Y » : rayon respecté, et exhaustif.
 
     Deux erreurs symétriques sont possibles et toutes deux graves pour un
     benchmark : livrer un POI hors rayon (faux positif dans la vérité terrain)
     ou en oublier un qui y est (faux négatif, qui pénalise un modèle correct).
     L'oracle contrôle les deux sens.
+
+    A échoué sur le premier jusqu'à ce que `results` soit corrigé en `result` :
+    le générateur publiait les quatre lots de rayons concaténés au lieu du seul
+    lot `d`. Ce test garde la correction.
     """
     bench = bench_of("point_near_metric", run_template)
 
@@ -104,14 +126,13 @@ def test_point_near_metric_respects_its_radius(run_template, df_osm):
         ids = _as_list(row["results_poi_id"])
         dists = _as_list(row["results_poi_dist"])
 
-        over = [(p, d) for p, d in zip(ids, dists) if d >= radius]
+        over = [(p, round(float(d), 1)) for p, d in zip(ids, dists) if d >= radius]
         assert not over, (
             f"ligne {i} ({row['query']!r}) : {len(over)} POIs au-delà du rayon "
             f"de {radius} m, ex. {over[:3]}"
         )
 
-        exclude = [row["anchor_index"]] if row["same_cat"] else []
-        sub = category_subset(df_osm, row["category_query"], exclude)
+        sub = corpus_without(df_osm, [row["anchor_index"]])
         dist = np.hypot(sub["x"] - row["anchor_x"], sub["y"] - row["anchor_y"])
         expected = set(sub["poi_id"][dist < radius])
 
@@ -124,17 +145,25 @@ def test_point_near_metric_respects_its_radius(run_template, df_osm):
 
 
 @oracle_for("point_near_cardinal", BROKEN_TEMPLATES)
-def test_point_near_cardinal_stays_in_its_sector(run_template, df_osm):
-    """« X au nord de Y » ne retient que le secteur angulaire annoncé.
+def test_point_near_cardinal_stays_in_its_quadrant(run_template, df_osm):
+    """« pois au nord de Y » ne retient que le quadrant annoncé.
+
+    Les quatre secteurs **pavent** le tour complet depuis f1be9c1 : chaque POI
+    tombe dans exactement un quadrant de 90°, contre un cône de ±70° — donc avec
+    recouvrement et trous — auparavant. L'écart angulaire admis est donc de 45°,
+    et la partition se vérifie en plus de l'appartenance : la réunion des quatre
+    directions d'une même ancre doit rendre chaque POI une fois et une seule.
 
     L'azimut suit la convention des templates — horaire depuis le nord, d'où
     `atan2(dx, dy)`. Une inversion des arguments passerait tous les contrôles de
     forme tout en plaçant « nord » à l'est.
     """
     bench = bench_of("point_near_cardinal", run_template)
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import CARDINAL_AZ
+    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
+        CARDINAL_AZ,
+    )
 
-    half_width = 70.0            # défaut du générateur
+    half_sector = 45.0
     geo = df_osm.set_index("poi_id")
 
     for i, row in bench.iterrows():
@@ -148,20 +177,42 @@ def test_point_near_cardinal_stays_in_its_sector(run_template, df_osm):
         gap = angular_gap_deg(az, center)
 
         outside = [(p, round(float(a), 1)) for p, a, g in zip(ids, az, gap)
-                   if g > half_width + 1e-9]
+                   if g > half_sector + 1e-9]
         assert not outside, (
             f"ligne {i} ({row['query']!r}) : {len(outside)} POIs hors du "
-            f"secteur {row['direction']} (centre {center}°, ±{half_width}°), "
+            f"quadrant {row['direction']} (centre {center}°, ±{half_sector}°), "
             f"ex. (poi_id, azimut) {outside[:3]}"
         )
+
+    # Partition : les quatre directions d'une même ancre se partagent le corpus
+    # sans doublon. Un POI vu deux fois signalerait des secteurs qui se
+    # recouvrent, un POI manquant un trou entre deux secteurs.
+    for anchor, group in bench.groupby("anchor_index"):
+        vus = [p for ids in group["results_poi_id"] for p in _as_list(ids)]
+        assert len(vus) == len(set(vus)), (
+            f"ancre {anchor} : {len(vus) - len(set(vus))} POIs comptés dans "
+            f"deux quadrants — les secteurs se recouvrent"
+        )
+        if len(group) == 4:
+            attendu = set(df_osm["poi_id"]) - {anchor}
+            assert set(vus) == attendu, (
+                f"ancre {anchor} : {len(attendu - set(vus))} POIs dans aucun "
+                f"des quatre quadrants, ex. {sorted(attendu - set(vus))[:3]}"
+            )
 
 
 @oracle_for("point_towards", BROKEN_TEMPLATES)
 def test_point_towards_follows_the_ab_bearing(run_template, df_osm):
-    """« X près de A vers B » retient le cône orienté de A vers B."""
+    """« pois près de A vers B » retient le cône orienté de A vers B.
+
+    Le second point se lit en `anchor_b_*` et non `point_b_*` : le générateur a
+    unifié le vocabulaire des deux ancres (point_towards.py:109-113), le
+    registre non — divergence tenue dans `known_defects`. L'oracle lit ce que le
+    générateur publie, sinon il ne teste plus la géométrie.
+    """
     bench = bench_of("point_towards", run_template)
 
-    half_width = 70.0
+    half_width = 70.0            # défaut du générateur
     geo = df_osm.set_index("poi_id")
 
     for i, row in bench.iterrows():
@@ -169,7 +220,7 @@ def test_point_towards_follows_the_ab_bearing(run_template, df_osm):
         if not ids:
             continue
         center = azimuth_deg(row["anchor_x"], row["anchor_y"],
-                             row["point_b_x"], row["point_b_y"])
+                             row["anchor_b_x"], row["anchor_b_y"])
         pts = geo.loc[ids]
         az = azimuth_deg(row["anchor_x"], row["anchor_y"],
                          pts["x"].to_numpy(), pts["y"].to_numpy())
@@ -184,7 +235,7 @@ def test_point_towards_follows_the_ab_bearing(run_template, df_osm):
 
 @oracle_for("point_between", BROKEN_TEMPLATES)
 def test_point_between_stays_in_the_ab_corridor(run_template, df_osm):
-    """« X entre A et B » : projection dans le segment, écart sous le corridor.
+    """« pois entre A et B » : projection dans le segment, écart sous le corridor.
 
     Le SQL projette sur AB (`along`) et mesure l'écart latéral (`cross_m`). Un
     POI derrière A ou au-delà de B a un `along` hors de `[0, |AB|]` et n'est pas
@@ -195,11 +246,6 @@ def test_point_between_stays_in_the_ab_corridor(run_template, df_osm):
     corridor = 200.0             # défaut du générateur
     geo = df_osm.set_index("poi_id")
 
-    # `anchor_a_*`/`anchor_b_*`, et non `anchor_*`/`point_b_*` : le template a
-    # deux ancres symétriques. Le registre, lui, annonce encore le vocabulaire
-    # à une ancre de `point_towards` — divergence tenue dans
-    # `known_defects.MISDECLARED_CONTEXT_COLUMNS`. L'oracle géométrique doit
-    # lire ce que le générateur publie, sinon il ne teste plus la géométrie.
     for i, row in bench.iterrows():
         ids = _as_list(row["results_poi_id"])
         if not ids:
@@ -235,7 +281,7 @@ def test_point_between_stays_in_the_ab_corridor(run_template, df_osm):
 
 @oracle_for("area_inside", BROKEN_TEMPLATES)
 def test_area_inside_returns_exactly_the_pois_within(run_template, df_osm):
-    """« X dans Z » : tous dedans, et aucun oublié."""
+    """« pois dans Z » : tous dedans, et aucun oublié."""
     bench = bench_of("area_inside", run_template)
     geo = df_osm.set_index("poi_id")
 
@@ -249,8 +295,7 @@ def test_area_inside_returns_exactly_the_pois_within(run_template, df_osm):
             f"zone, ex. {outside[:3]}"
         )
 
-        sub = category_subset(df_osm, row["category_query"])
-        expected = set(sub["poi_id"][sub.geometry.within(area)])
+        expected = set(df_osm["poi_id"][df_osm.geometry.within(area)])
         if len(expected) <= DEFAULT_K:
             assert expected == set(ids), (
                 f"ligne {i} ({row['query']!r}) : oubliés "
@@ -264,9 +309,10 @@ def test_area_inside_ranking_is_meaningful(run_template):
     """Le classement « dans la zone » doit discriminer les POIs.
 
     `distance(point, polygone)` vaut 0 pour tout point intérieur : la colonne de
-    tri est constante et `sort_values` laisse l'ordre d'insertion. Le classement
-    livré comme vérité terrain est alors arbitraire — deux modèles qui ordonnent
-    différemment les mêmes bons POIs sont notés différemment sans raison.
+    tri est constante et le rang publié n'est que l'ordre du corpus. Le
+    classement livré comme vérité terrain est alors arbitraire — deux modèles
+    qui ordonnent différemment les mêmes bons POIs sont notés différemment sans
+    raison.
     """
     bench = bench_of("area_inside", run_template)
 
@@ -300,14 +346,18 @@ def test_area_outside_excludes_the_area(run_template, df_osm):
         )
 
 
-@oracle_for("area_border", BROKEN_TEMPLATES,
-            {"area_border": SEMANTIC_DEFECTS["area_border_mesure_le_polygone_plein"]})
+@oracle_for("area_border", BROKEN_TEMPLATES)
 def test_area_border_measures_distance_to_the_boundary(run_template, df_osm):
     """« X en bordure de Z » se mesure au *pourtour*, pas au polygone plein.
 
     Contre le polygone plein, tout POI intérieur est à distance 0 et occupe la
     tête du classement, alors que la question porte précisément sur le bord.
     Seul `area.boundary` a une distance nulle exactement sur le pourtour.
+
+    C'est ce que fait `pois_near_border` depuis f1be9c1 : ce test ne constate
+    plus un défaut, il garde la correction. `area_border` reste par ailleurs
+    incohérent — il ne filtre pas par catégorie — mais c'est un autre défaut,
+    attrapé par `test_benchmark_is_coherent`.
     """
     bench = bench_of("area_border", run_template)
     geo = df_osm.set_index("poi_id")
@@ -318,7 +368,7 @@ def test_area_border_measures_distance_to_the_boundary(run_template, df_osm):
         published = _as_list(row["results_poi_dist"])
         expected = [geo.loc[p, "geometry"].distance(boundary) for p in ids]
 
-        assert np.allclose(published, expected, atol=1e-6), (
+        assert np.allclose(published, expected, atol=TOL_M), (
             f"ligne {i} ({row['query']!r}) : results_poi_dist n'est pas la "
             f"distance au bord.\n  publié  {[round(d, 1) for d in published[:5]]}"
             f"\n  attendu {[round(d, 1) for d in expected[:5]]}"
@@ -326,23 +376,26 @@ def test_area_border_measures_distance_to_the_boundary(run_template, df_osm):
 
 
 @oracle_for("area_direction", BROKEN_TEMPLATES)
-def test_area_direction_orders_along_the_right_axis(run_template, df_osm):
-    """« X au nord de Z » : dans Z, et ordonné sur le bon axe et le bon sens.
+def test_area_direction_keeps_only_its_quadrant(run_template, df_osm):
+    """« pois au nord de Z » : dans Z, et dans le bon quadrant du centroïde.
 
-    Nord et sud trient sur l'ordonnée, est et ouest sur l'abscisse ; nord et est
-    décroissants, sud et ouest croissants. Une erreur d'axe ou de signe produit
-    un classement plausible mais faux, que seule cette monotonie détecte.
+    `segregate_pois` découpe la zone en quatre quadrants autour de son centroïde
+    — nord si `dy >= |dx|`, est si `dx >= |dy|`, etc. L'oracle réapplique la
+    définition géométrique plutôt que les masques du module.
+
+    Il ne vérifie plus de monotonie : le générateur ne trie pas, et le rang
+    publié n'est que l'ordre du corpus. Ce défaut-là est démontré à part, par
+    `test_known_defects.test_area_direction_rank_is_a_ranking`.
     """
     bench = bench_of("area_direction", run_template)
     geo = df_osm.set_index("poi_id")
-    axis_of = {"north": "y", "south": "y", "east": "x", "west": "x"}
-    descending = {"north", "east"}
 
     for i, row in bench.iterrows():
         ids = _as_list(row["results_poi_id"])
-        if len(ids) < 2:
+        if not ids:
             continue
         area = row["area_geometry"]
+        centroid = area.centroid
 
         outside = [p for p in ids if not geo.loc[p, "geometry"].within(area)]
         assert not outside, (
@@ -350,15 +403,18 @@ def test_area_direction_orders_along_the_right_axis(run_template, df_osm):
             f"zone, ex. {outside[:3]}"
         )
 
-        axis = axis_of[row["direction"]]
-        coords = [geo.loc[p, axis] for p in ids]
-        ordered = (sorted(coords, reverse=True) if row["direction"] in descending
-                   else sorted(coords))
-        assert coords == pytest.approx(ordered), (
-            f"ligne {i} ({row['query']!r}) : classement non monotone sur "
-            f"l'axe {axis} pour la direction {row['direction']}\n"
-            f"  obtenu {[round(c, 1) for c in coords[:6]]}"
-        )
+        for poi_id in ids:
+            point = geo.loc[poi_id, "geometry"]
+            dx, dy = point.x - centroid.x, point.y - centroid.y
+            dans_le_quadrant = {
+                "north": dy >= abs(dx), "south": -dy >= abs(dx),
+                "east": dx >= abs(dy), "west": -dx >= abs(dy),
+            }[row["direction"]]
+            assert dans_le_quadrant, (
+                f"ligne {i} ({row['query']!r}) : poi_id={poi_id} est à "
+                f"(dx={dx:.1f}, dy={dy:.1f}) du centroïde, hors du quadrant "
+                f"{row['direction']}"
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -367,7 +423,7 @@ def test_area_direction_orders_along_the_right_axis(run_template, df_osm):
 
 @oracle_for("street_along", BROKEN_TEMPLATES)
 def test_street_along_measures_distance_to_the_street(run_template, df_osm):
-    """« X le long de la rue R » classe par distance à la géométrie de R."""
+    """« pois le long de la rue R » classe par distance à la géométrie de R."""
     bench = bench_of("street_along", run_template)
     geo = df_osm.set_index("poi_id")
 
@@ -417,15 +473,16 @@ def test_street_cross_measures_distance_to_the_junction(run_template, df_osm):
 
 
 @oracle_for("street_opposite_side", BROKEN_TEMPLATES)
-def test_street_opposite_side_is_really_on_the_other_side(run_template, df_osm,
-                                                          df_streets):
+def test_street_opposite_side_is_really_on_the_other_side(run_template, df_osm):
     """« X de l'autre côté de R par rapport à Y » : côté opposé, et à portée.
 
     Réutilise `side_of_street` du template lui-même pour le signe : réécrire le
     produit vectoriel ici ne testerait que ma propre réimplémentation. En
     revanche les deux seuils (40 m à la rue, 80 m le long) sont recalculés.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_opposite_side import side_of_street
+    from benchmark_pipeline.generator.template_question.geospatial.street_opposite_side import (
+        side_of_street,
+    )
 
     bench = bench_of("street_opposite_side", run_template)
     geo = df_osm.set_index("poi_id")

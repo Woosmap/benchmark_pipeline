@@ -4,8 +4,8 @@ Les tests ne tapent ni Overpass ni le cache OSM : ils travaillent sur une grille
 de POIs construite ici. Trois raisons à ce choix — le déterminisme (une vérité
 terrain recalculable à la main), la vitesse, et l'absence de réseau.
 
-Le contrat de colonnes est celui de `benchmark_pipeline/loader/osm_loaders.py`, qui est
-la direction voulue du projet :
+Le contrat de colonnes est celui de `benchmark_pipeline/loader/osm_loaders.py`,
+qui est la direction voulue du projet :
 
 * `df_osm`     → `poi_id`, `poi_name`, `category`, `x`, `y`, `geometry`
 * `df_area`    → `area_name`, `geometry`
@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 gpd = pytest.importorskip("geopandas")
-from shapely.geometry import LineString, MultiLineString, Point, box  # noqa: E402
+from shapely.geometry import LineString, MultiLineString, Point, box
 
 #: Graine unique de toute la suite. Les générateurs la prennent en argument ;
 #: une valeur fixe rend chaque test reproductible d'une exécution à l'autre.
@@ -46,6 +46,12 @@ STREET_V_X = OX + 250.0
 
 #: Décalage des POIs « à cheval » de part et d'autre de la rue horizontale.
 STRADDLE_OFFSET = 20.0
+
+#: Côté et pas de la grille de quartiers, en mètres. Le pas vaut la moitié du
+#: côté : les quartiers se recouvrent, donc aucun n'est vide de POIs.
+QUARTIER_SIDE = 300.0
+QUARTIER_STEP = 150.0
+QUARTIER_GRID = 4      # 4x4 = 16 quartiers
 
 
 def build_df_osm():
@@ -104,26 +110,43 @@ def build_df_osm():
 def build_df_area():
     """Construit les zones synthétiques.
 
-    Trois polygones, dont un volontairement sous le `min_size=1000` par défaut
-    des générateurs, pour que le filtre de surface soit réellement éprouvé.
+    Trois zones nommées, puis une grille de 16 quartiers qui se recouvrent.
+
+    Le nombre de zones fait partie du contrat, il n'est pas décoratif :
+    `area_inside` et `area_direction` tirent `nb_q` indices **distincts** parmi
+    les zones retenues (`rng.choice(..., replace=False)`), donc ils lèvent dès
+    qu'il y a moins de zones que de questions demandées. Trois zones — ce que
+    contenait cette fixture avant le refactor des cibles — ne permettaient même
+    plus de les lancer à `nb_q=10` : les deux templates n'étaient plus testés
+    que par leur plantage. La grille porte le compte à 18 zones au-dessus de
+    `min_size=20000`, plafond effectif de `nb_q` pour ces deux templates.
+
+    `Parc Carre` reste en première position : plusieurs tests le désignent par
+    `df_area.geometry.iloc[0]` et comptent sur ses 400×400 m.
 
     Returns:
         GeoDataFrame: `area_name`, `geometry`, en EPSG:2154.
     """
-    return gpd.GeoDataFrame(
-        [
-            # couvre le quadrant bas-gauche de la grille : 160 000 m²
-            {"area_name": "Parc Carre",
-             "geometry": box(OX - 50, OY - 50, OX + 350, OY + 350)},
-            # quadrant haut-droit : 62 500 m²
-            {"area_name": "Square Petit",
-             "geometry": box(OX + 400, OY + 400, OX + 650, OY + 650)},
-            # 25 m², sous min_size : doit être écartée
-            {"area_name": "Micro Zone",
-             "geometry": box(OX + 10, OY + 10, OX + 15, OY + 15)},
-        ],
-        crs=2154,
-    )
+    rows = [
+        # couvre le quadrant bas-gauche de la grille : 160 000 m²
+        {"area_name": "Parc Carre",
+         "geometry": box(OX - 50, OY - 50, OX + 350, OY + 350)},
+        # quadrant haut-droit : 62 500 m²
+        {"area_name": "Square Petit",
+         "geometry": box(OX + 400, OY + 400, OX + 650, OY + 650)},
+        # 25 m², sous min_size : doit être écartée
+        {"area_name": "Micro Zone",
+         "geometry": box(OX + 10, OY + 10, OX + 15, OY + 15)},
+    ]
+    for iy in range(QUARTIER_GRID):
+        for ix in range(QUARTIER_GRID):
+            x0 = OX - 50 + QUARTIER_STEP * ix
+            y0 = OY - 50 + QUARTIER_STEP * iy
+            rows.append({
+                "area_name": f"Quartier {ix}-{iy}",
+                "geometry": box(x0, y0, x0 + QUARTIER_SIDE, y0 + QUARTIER_SIDE),
+            })
+    return gpd.GeoDataFrame(rows, crs=2154)
 
 
 def build_df_streets():
@@ -135,7 +158,7 @@ def build_df_streets():
     `rue Coupee` est une MultiLineString, pour éprouver le filtre `geom_type`.
 
     `id_street` est délibérément **égal au label d'index**, parce que
-    `street_cross.py:82` fait `df_streets.loc[<valeur de id_street>]` : sans
+    `street_cross.py:71-72` fait `df_streets.loc[<valeur de id_street>]` : sans
     cette égalité, ce template ne peut pas fonctionner du tout et l'on ne
     testerait que son plantage.
 
@@ -191,52 +214,8 @@ def nb_q():
     return 10
 
 
-#: Templates qui refusent le `nb_q` commun et imposent leur propre plancher.
-#:
-#: `point_near_cardinal` stratifie deux fois — par catégorie d'ancre, puis par
-#: direction — et tire `nb_q_anc // len(list_direction)` ancres par strate. À
-#: nb_q=10 et 5 catégories le quotient vaut 0, `sample(n=0)` ne rend rien, et le
-#: module lève plutôt que de produire un benchmark vide (:99-100). Le plancher
-#: appartient donc au générateur, pas à la suite : lui imposer nb_q=10 testait
-#: une précondition qu'il déclare, pas son comportement.
-#:
-#: 21 et non 20 : le garde-fou s'écrit `if nb_q <= 20`, alors que son message
-#: annonce « ≥ 20 ». La valeur limite exacte est donc refusée — incohérence du
-#: module, relevée dans `known_defects.SEMANTIC_DEFECTS`.
-TEMPLATE_NB_Q = {
-    "point_near_cardinal": 21,
-}
-
-
 @pytest.fixture(scope="session")
-def nb_q_for(nb_q):
-    """`nb_q` applicable à un template donné.
-
-    Args:
-        nb_q (int): Valeur commune, injectée par la fixture.
-
-    Returns:
-        callable: `nb_q_for(template) -> int`.
-    """
-    def _nb_q(template):
-        return TEMPLATE_NB_Q.get(template.name, nb_q)
-
-    return _nb_q
-
-
-@pytest.fixture(scope="session")
-def fixture_table(df_osm, df_area, df_streets):
-    """Table de résolution des fixtures déclarées dans `TEMPLATE_REGISTRY`.
-
-    Les templates déclarent leurs entrées par nom (`("df_osm", "df_area")`) ;
-    cette table les traduit en objets, pour appeler un générateur sans savoir
-    lequel c'est.
-    """
-    return {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
-
-
-@pytest.fixture(scope="session")
-def run_template(fixture_table, nb_q_for):
+def run_template(df_osm, df_area, df_streets, nb_q):
     """Exécute un template et met son résultat en cache pour la session.
 
     Les générateurs ouvrent une connexion DuckDB par question ; les rejouer pour
@@ -248,6 +227,7 @@ def run_template(fixture_table, nb_q_for):
         callable: `run_template(template) -> DataFrame`, qui relève l'exception
             d'origine si le générateur échoue.
     """
+    fixture_table = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
     cache = {}
 
     def _run(template):
@@ -256,8 +236,7 @@ def run_template(fixture_table, nb_q_for):
                 module = importlib.import_module(template.module)
                 generator = getattr(module, template.generator)
                 args = [fixture_table[name] for name in template.fixtures]
-                cache[template.name] = (
-                    None, generator(*args, nb_q=nb_q_for(template), seed=SEED))
+                cache[template.name] = (None, generator(*args, nb_q=nb_q, seed=SEED))
             except Exception as exc:          # noqa: BLE001 — on veut tout capturer
                 cache[template.name] = (exc, None)
         error, bench = cache[template.name]
@@ -266,6 +245,65 @@ def run_template(fixture_table, nb_q_for):
         return bench
 
     return _run
+
+
+# --------------------------------------------------------------------------- #
+# familles de templates
+# --------------------------------------------------------------------------- #
+
+#: Libellé injecté comme `category_query` pour les templates sans catégorie.
+#: C'est le mot que leur énoncé emploie déjà (« pois near X »), donc la règle
+#: « l'énoncé mentionne la catégorie cherchée » de `validate_benchmark` passe
+#: sans être relâchée.
+CATEGORY_FREE_LABEL = "pois"
+
+#: Templates dont l'énoncé ne porte **aucune** catégorie : ils demandent tous
+#: les POIs d'une relation spatiale, et leur réponse mélange donc les catégories
+#: par construction.
+#:
+#: Ce n'est pas un défaut mais la forme qu'ont prise ces huit générateurs. Le
+#: schéma, lui, suppose encore une catégorie partout — d'où le défaut
+#: `category_query_absente` de `known_defects.py`, qui porte sur ce décalage.
+#: Sans cette table, `validate_benchmark` s'arrête sur la colonne manquante et
+#: ne vérifie plus rien d'autre : les listes dupliquées de `point_near_metric`
+#: passaient inaperçues.
+CATEGORY_FREE_TEMPLATES = frozenset({
+    "point_near",
+    "point_near_metric",
+    "point_near_cardinal",
+    "point_towards",
+    "point_between",
+    "area_inside",
+    "area_direction",
+    "street_along",
+})
+
+
+def coherence_problems(bench, template, df_osm):
+    """Incohérences d'un benchmark, lues selon la famille de son template.
+
+    Args:
+        bench (DataFrame): Le benchmark à vérifier.
+        template (Template): Son entrée de `TEMPLATE_REGISTRY`.
+        df_osm (GeoDataFrame): Corpus de POIs.
+
+    Returns:
+        list[str]: Messages d'incohérence, vide si le benchmark est cohérent.
+    """
+    from benchmark_pipeline.generator.template_question.schema import validate_benchmark
+
+    if template.name not in CATEGORY_FREE_TEMPLATES:
+        return validate_benchmark(bench, df_osm,
+                                  dist_is_ranking_key=template.dist_is_ranking_key,
+                                  allow_empty=True)
+
+    problems = validate_benchmark(
+        bench.assign(category_query=CATEGORY_FREE_LABEL), df_osm,
+        dist_is_ranking_key=template.dist_is_ranking_key, allow_empty=True,
+    )
+    # Seul contrôle que la famille ne peut pas satisfaire : ses réponses sont
+    # multi-catégories voulues. Les onze autres règles restent appliquées.
+    return [p for p in problems if "hors catégorie" not in p]
 
 
 # --------------------------------------------------------------------------- #
@@ -305,9 +343,6 @@ def geospatial_dir():
 
 def oracle_pois(df_osm, category):
     """POIs d'une catégorie, avec leurs coordonnées en tableau.
-
-    Sert aux recalculs indépendants : les tests sémantiques refont la vérité
-    terrain en numpy/shapely pur, sans repasser par DuckDB.
 
     Args:
         df_osm (GeoDataFrame): Le corpus.

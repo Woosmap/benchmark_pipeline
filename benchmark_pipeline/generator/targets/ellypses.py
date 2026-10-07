@@ -28,7 +28,6 @@ def get_ellypse(row):
     # croisement pour `cross`, le POI de référence pour `opposite_side`, le
     # centroïde de la zone pour les `*_area`.
     def azimut_et_longueur(geom):
-        # `geoms[0]` reproduit la troncature que font déjà les templates de rue.
         ligne = geom.geoms[0] if geom.geom_type == "MultiLineString" else geom
         (x0, y0), (x1, y1) = ligne.coords[0], ligne.coords[-1]
         return math.degrees(math.atan2(y1 - y0, x1 - x0)), ligne.length
@@ -76,16 +75,16 @@ def get_ellypse(row):
         return (0.0, 0.0, rayon, rayon, 0.0)
 
     if fonction == "cardinal_azimuth_sql":
-        dx, dy, inclinaison = {"north": (0.0, 200.0, 90.0),
-                               "south": (0.0, -200.0, 90.0),
-                               "east": (200.0, 0.0, 0.0),
-                               "west": (-200.0, 0.0, 0.0)}[row["direction"]]
+        dx, dy, inclinaison = {"north": (0.0, 500.0, 90.0),
+                               "south": (0.0, -500.0, 90.0),
+                               "east": (500.0, 0.0, 0.0),
+                               "west": (-500.0, 0.0, 0.0)}[row["direction"]]
         return (dx, dy, 500.0, 300.0, inclinaison)
 
     if fonction == "towards_b_sql":
         angle = math.atan2(row["anchor_b_y"] - row["anchor_y"],
                            row["anchor_b_x"] - row["anchor_x"])
-        return (200.0 * math.cos(angle), 200.0 * math.sin(angle),
+        return (500.0 * math.cos(angle), 300.0 * math.sin(angle),
                 500.0, 300.0, math.degrees(angle))
 
     if fonction == "between_ab_sql":
@@ -104,7 +103,7 @@ def get_ellypse(row):
         return (centre_x - centroide.x, centre_y - centroide.y, demi_u, 100.0, inclinaison)
 
     if fonction == "cross_streets":
-        return (0.0, 0.0, 150.0, 150.0, 0.0)
+        return (0.0, 0.0, 200.0, 200.0, 0.0)
 
     if fonction == "opposite_side":
         rue = row["street_geometry"]

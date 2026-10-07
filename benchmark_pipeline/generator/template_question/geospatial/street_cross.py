@@ -25,7 +25,7 @@ def touching_streets(df_streets, street, tol=1.0):
     d = df_streets.geometry.distance(geom)
     return df_streets[(d <= tol) & (df_streets['id_street'] != float(street.id_street))]
 
-def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
+def cross_streets(df, street_geom_a, street_geom_b, k=100):
     """Retourne les POIs d'une catégorie les plus proches du croisement de deux rues.
 
     Args:
@@ -40,7 +40,7 @@ def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
             `rank` (1-based), triées par distance croissante.
     """
     inter_point = street_geom_a.intersection(street_geom_b)
-    sub = df[df["category"] == cat].copy()
+    sub = df.copy()
     sub["dist"] = sub.geometry.distance(inter_point)
     out = sub.nsmallest(k, "dist")[["poi_id", "poi_name", "dist"]].reset_index(drop=True)
     out["rank"] = out.index + 1
@@ -65,31 +65,28 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
-    for cat_q in list_cat:
-        for _ in range(n_queries_per_stratum):
-            id_street_a = rng.choice(df_streets['id_street'])
-            street_a = df_streets.loc[id_street_a]
-            candidates = touching_streets(df_streets, street_a)
-            if len(candidates) > 0:
-                id_street_b = rng.choice(candidates.index)
-                street_b = df_streets.loc[id_street_b]
-                results = cross_streets(df_osm, street_a.geometry, street_b.geometry, cat_q)
+    for _ in range(nb_q):
+        id_street_a = rng.choice(df_streets['id_street'])
+        street_a = df_streets.loc[id_street_a]
+        candidates = touching_streets(df_streets, street_a)
+        if len(candidates) > 0:
+            id_street_b = rng.choice(candidates.index)
+            street_b = df_streets.loc[id_street_b]
+            results = cross_streets(df_osm, street_a.geometry, street_b.geometry)
 
-                dic_benchmark["query"].append(f"{cat_q} at the intersection of  {street_a['street_name']} and {street_b['street_name']}")
-                dic_benchmark["category_query"].append(cat_q)
-                dic_benchmark["street_a_index"].append(id_street_a)
-                dic_benchmark["street_a_name"].append(street_a["street_name"])
-                dic_benchmark["street_a_geometry"].append(street_a.geometry)
-                dic_benchmark["street_b_index"].append(id_street_b)
-                dic_benchmark["street_b_name"].append(street_b["street_name"])
-                dic_benchmark["street_b_geometry"].append(street_b.geometry)
-                dic_benchmark["function"].append("cross_streets")
-                dic_benchmark["results_poi_id"].append(list(results.poi_id))
-                dic_benchmark["results_poi_name"].append(list(results.poi_name))
-                dic_benchmark["results_poi_dist"].append(list(results.dist))
-                dic_benchmark["results_poi_rank"].append(list(results["rank"]))
-            else: continue
+            dic_benchmark["query"].append(f"pois at the intersection of  {street_a['street_name']} and {street_b['street_name']}")
+            dic_benchmark["street_a_index"].append(id_street_a)
+            dic_benchmark["street_a_name"].append(street_a["street_name"])
+            dic_benchmark["street_a_geometry"].append(street_a.geometry)
+            dic_benchmark["street_b_index"].append(id_street_b)
+            dic_benchmark["street_b_name"].append(street_b["street_name"])
+            dic_benchmark["street_b_geometry"].append(street_b.geometry)
+            dic_benchmark["function"].append("cross_streets")
+            dic_benchmark["results_poi_id"].append(list(results.poi_id))
+            dic_benchmark["results_poi_name"].append(list(results.poi_name))
+            dic_benchmark["results_poi_dist"].append(list(results.dist))
+            dic_benchmark["results_poi_rank"].append(list(results["rank"]))
+        else: continue
 
     return pd.DataFrame(dic_benchmark)
 

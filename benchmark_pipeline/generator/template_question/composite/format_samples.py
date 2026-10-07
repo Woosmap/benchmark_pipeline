@@ -130,7 +130,10 @@ def make_rows(
     rows = []
     for pos in positions:
         ligne = df_question.iloc[pos]
-        pois = list(set(ligne[colonne_pois]))
+        # `dict.fromkeys` et non `set` : les deux dédoublonnent, mais un `set`
+        # rend ses éléments dans l'ordre de ses cases de hachage, ce qui détruit
+        # l'ordre de pertinence spatiale que le générateur a pris soin de poser.
+        pois = list(dict.fromkeys(ligne[colonne_pois]))
         row = {
             "index": pos,
             "question": ligne[colonne_question],

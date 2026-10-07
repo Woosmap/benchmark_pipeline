@@ -2,8 +2,9 @@
 
 Chaque entrée a été **constatée en exécutant** le générateur sur les fixtures de
 `conftest.py`, jamais seulement déduite de la lecture du code. L'inventaire est
-donc daté : il décrit l'état du 15 septembre 2026, et se périme dès qu'un
-template est corrigé.
+donc daté : il décrit l'état du 7 octobre 2026, après le commit f1be9c1
+(« refonte des fonctions de calcul des pois pour les questions geospatiale »),
+et se périme dès qu'un template est corrigé.
 
 Ces défauts ne sont pas corrigés ici : le rôle de la suite est de les constater.
 Ils sont encodés en `xfail(strict=True)`, ce qui donne trois propriétés utiles :
@@ -15,26 +16,50 @@ Ils sont encodés en `xfail(strict=True)`, ce qui donne trois propriétés utile
   Le test dit alors « c'est réparé, retire le marqueur », au lieu de rester vert
   en silence et de laisser l'inventaire mentir.
 
-C'est exactement ce qui s'est produit : la version précédente de ce fichier
-répertoriait huit templates cassés (`point_towards`, les quatre `area_*`, les
-trois `street_*`) pour des noms de colonnes erronés — `area['name_area']`,
-`street['name']` — et un appel resté au niveau module dans `street_cross.py`.
-Tous ont été réparés depuis, et la suite l'a signalé par 142 `XPASS(strict)`.
-Ils ne figurent plus ci-dessous ; les tests qui les démontraient sont devenus
-des tests de non-régression ordinaires dans `test_known_defects.py`.
+C'est ce qui s'est produit au passage de f1be9c1. Quatre défauts de la version
+précédente de ce fichier ont disparu, et la suite les a signalés :
 
-Cinq familles, parce qu'elles ne se corrigent pas au même endroit :
+* `area_border_mesure_le_polygone_plein` — `border_area` est devenu
+  `pois_near_border`, qui mesure contre `area.boundary`. Mesuré : les 24 POIs
+  intérieurs du Parc Carre portent 20 distances distinctes, de 43,2 à 151,6 m,
+  là où l'ancienne version les donnait toutes à 0,0 m ;
+* `area_direction_test_de_sous_chaine` — `direction_area` est devenu
+  `segregate_pois`, qui indexe un dictionnaire de masques : `'north s'`, `'h so'`
+  et `''` lèvent maintenant KeyError au lieu d'être acceptés ;
+* `point_near_cardinal_garde_fou_off_by_one` — le garde-fou `if nb_q <= 20` a
+  été retiré ; le template tourne à n'importe quel `nb_q`, et
+  `conftest.TEMPLATE_NB_Q`, qui n'existait que pour le contourner, a été
+  supprimé avec lui ;
+* `point_between_quota` — la stratification produit désormais exactement `nb_q`
+  questions (10 pour nb_q=10, 14 pour nb_q=14).
+
+Un cinquième a été corrigé pendant l'écriture de cette suite : `point_near_metric`
+publiait `results` — les quatre lots de rayons concaténés — là où il calculait
+`result`. Mesuré après correction : plus aucun doublon ni POI hors du rayon
+annoncé. La correction a rendu visible le défaut qu'elle masquait, les réponses
+vides au rayon de 100 m, désormais dans `UNANSWERABLE_TEMPLATES`.
+
+Les tests qui les démontraient sont devenus des tests de non-régression
+ordinaires dans `test_known_defects.py`.
+
+Sept familles, parce qu'elles ne se corrigent pas au même endroit :
 
 `BROKEN_TEMPLATES`
     Le générateur lève. Il ne produit **aucune** question, donc aucun invariant
     de cohérence ne peut être évalué.
 `INCOHERENT_TEMPLATES`
     Le générateur tourne mais sa sortie viole le schéma.
-`UNPLOTTABLE_TEMPLATES`
-    Sous-ensemble du précédent : la sortie ne peut même pas être affichée.
+`MISDECLARED_CONTEXT_COLUMNS`
+    Le registre annonce des colonnes que le générateur ne publie pas (ou plus).
+    La sortie, elle, reste cohérente.
+`STALE_FUNCTION_NAMES`
+    La colonne `function` nomme une fonction qui n'existe plus dans le module.
 `UNANSWERABLE_TEMPLATES`
     Le générateur tourne et sa sortie est cohérente, mais il laisse passer des
     questions sans aucune réponse — inévaluables pour un modèle de recherche.
+`DEAD_IMPORTS`
+    Le module importe des noms qu'il n'utilise jamais — et paie une dépendance
+    pour rien. Indexée par chemin de module, et non par nom de template.
 `SEMANTIC_DEFECTS`
     La sortie est bien formée, mais le volume produit, le classement ou la
     robustesse du tirage sont faux.
@@ -52,47 +77,141 @@ IMPORT_ERRORS = {}
 
 #: Templates dont le générateur lève avant de produire quoi que ce soit.
 #:
-#: Vide au moment de la mesure : les douze générateurs tournent. `point_between`
-#: y a figuré brièvement pendant son refactor de stratification — `allocate`
-#: était appelé sans son argument `n` — et en est sorti dès que l'appel a été
-#: complété en `allocate(nb_q, ratio_cat_q)`.
+#: Vide au moment de la mesure, mais de justesse : `area_inside` et
+#: `area_direction` lèvent dès que le corpus de zones compte moins de `nb_q`
+#: entrées, ce qui était le cas des anciennes fixtures à trois zones. Le défaut
+#: est tenu dans `SEMANTIC_DEFECTS` — `area_echantillonnage_borne` — et
+#: démontré sur un corpus réduit, plutôt que de condamner les deux templates à
+#: n'être testés que par leur plantage.
 BROKEN_TEMPLATES = {}
 
 #: Templates qui tournent mais dont la sortie viole le schéma du benchmark.
 INCOHERENT_TEMPLATES = {
-    "area_direction": (
-        "area_direction.py:104-106 — publie `results_poi_x`/`results_poi_y` "
-        "au lieu de `results_poi_dist`. Le schéma de sortie diverge donc de "
-        "celui des onze autres templates : la concaténation en un benchmark "
-        "unique perd la colonne, et tout l'outillage qui lit `results_poi_dist` "
-        "(plot_question, calcul de nDCG) ne trouve rien. Le module porte "
-        "lui-même le TODO (:69-71)"
+    "area_border": (
+        "area_border.py:46 — `pois_near_border(df_osm, area.geometry, band)` "
+        "ne reçoit pas `cat_q` et ne filtre donc rien, alors que l'énoncé "
+        "(`f\"{cat_q} at the border of …\"`) et la colonne `category_query` "
+        "annoncent tous deux une catégorie. La vérité terrain contient les "
+        "cinq catégories du corpus : un modèle qui répond exactement ce que la "
+        "question demande est pénalisé. Mesuré : 10 questions sur 10 à nb_q=10"
     ),
+    "area_direction": (
+        "area_direction.py:57-61 — publie `results_poi_x`/`results_poi_y` au "
+        "lieu de `results_poi_dist`. Le schéma de sortie diverge de celui des "
+        "onze autres templates : la concaténation en un benchmark unique perd "
+        "la colonne, et tout l'outillage qui lit `results_poi_dist` "
+        "(plot_question, calcul de nDCG) ne trouve rien"
+    ),
+}
+
+#: Templates auxquels il manque une des quatre listes de vérité terrain.
+#: **Sous-ensemble strict d'`INCOHERENT_TEMPLATES`**, sur le modèle
+#: d'`IMPORT_ERRORS` ⊂ `BROKEN_TEMPLATES` : les deux autres incohérents
+#: publient bien les quatre listes — `point_near_metric` les remplit mal,
+#: `area_border` y met les mauvais POIs — donc les marquer ici les ferait
+#: XPASS(strict) sur `test_result_lists_complete`, qu'ils passent.
+INCOMPLETE_RESULT_LISTS = {
+    "area_direction": INCOHERENT_TEMPLATES["area_direction"],
 }
 
 #: Templates dont le registre annonce des colonnes de contexte que le
 #: générateur ne publie pas (ou plus).
 #:
-#: Famille distincte d'`INCOHERENT_TEMPLATES`, et pour la même raison
-#: qu'`UNPLOTTABLE_TEMPLATES` en est un sous-ensemble strict : la divergence est
-#: entre le *registre* et le module, pas dans la sortie elle-même. Le benchmark
-#: produit reste cohérent — `results_poi_*` est complet, `validate_benchmark`
-#: passe — donc marquer ces templates incohérents ferait échouer en XPASS(strict)
-#: `test_result_lists_complete` et `test_benchmark_is_coherent`, qu'ils passent.
-#: Seuls `test_declared_columns_present` et `test_query_mentions_its_context`
-#: lisent cette table.
+#: Famille distincte d'`INCOHERENT_TEMPLATES` : la divergence est entre le
+#: *registre* et le module, pas dans la sortie elle-même. Le benchmark produit
+#: reste cohérent, donc marquer ces templates incohérents ferait échouer en
+#: XPASS(strict) `test_benchmark_is_coherent`, qu'ils passent. Seuls
+#: `test_declared_columns_present` et `test_query_mentions_its_context` lisent
+#: cette table.
+#:
+#: Les trois causes se cumulent, d'où des motifs composés :
+#:
+#: 1. `category_query` — huit templates demandent désormais « pois », sans
+#:    catégorie, et ne publient plus la colonne. `BENCHMARK_CORE_COLUMNS`
+#:    (schema.py:30) l'exige toujours partout. Cf. `conftest.CATEGORY_FREE_TEMPLATES` ;
+#: 2. `same_cat` — `_ANCHOR_COLS` (schema.py:99) l'annonce, plus aucun template
+#:    ne la produit ;
+#: 3. le vocabulaire du second point — `point_towards` publie `anchor_b_*` et
+#:    `point_between` `anchor_a_*`/`anchor_b_*`, quand le registre annonce
+#:    `point_b_*`.
+_CATEGORY_QUERY_ABSENTE = (
+    "l'énoncé ne porte plus de catégorie (« pois near X ») et le générateur ne "
+    "publie plus `category_query`, que `BENCHMARK_CORE_COLUMNS` (schema.py:30) "
+    "exige toujours. Huit des douze templates sont dans ce cas : c'est le "
+    "registre qui est périmé, pas le générateur"
+)
+
+_SAME_CAT_ABSENTE = (
+    "`same_cat`, annoncée par `_ANCHOR_COLS` (schema.py:99-100), n'est plus "
+    "produite par aucun template depuis que les questions de point ne filtrent "
+    "plus par catégorie"
+)
+
 MISDECLARED_CONTEXT_COLUMNS = {
+    "point_near": f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE}",
+    "point_near_metric": f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE}",
+    "point_near_cardinal": f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE}",
+    "point_towards": (
+        f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE} ; et "
+        "point_towards.py:109-113 publie `anchor_b_index`, `anchor_b_name`, "
+        "`anchor_b_category`, `anchor_b_x`, `anchor_b_y` là où le registre "
+        "annonce `_POINT_B_COLS` (`point_b_*`) : les cinq colonnes déclarées "
+        "sont absentes du DataFrame"
+    ),
     "point_between": (
-        "schema.py:99-102 déclare `point_between` avec `_ANCHOR_COLS + "
-        "_POINT_B_COLS` (`anchor_index`, `anchor_name`, `anchor_category`, "
-        "`anchor_x`, `anchor_y`, `point_b_index`…), mais point_between.py:128 "
-        "publie `anchor_a_*` et `anchor_b_*` : les dix colonnes annoncées sont "
-        "absentes du DataFrame. Le template ayant deux ancres et non une ancre "
-        "et un point B, c'est le registre qui est périmé — il a gardé le "
-        "vocabulaire de `point_towards`. Conséquence en cascade : "
-        "`label_column='anchor_name'` ne désigne aucune colonne, donc "
-        "`test_query_mentions_its_context` lève KeyError au lieu de comparer "
-        "l'énoncé à son libellé"
+        f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE} ; et "
+        "schema.py:126-129 déclare `point_between` avec `_ANCHOR_COLS + "
+        "_POINT_B_COLS` (`anchor_index`, `anchor_name`…, `point_b_index`…), "
+        "mais point_between.py:156-165 publie `anchor_a_*` et `anchor_b_*` : "
+        "les dix colonnes annoncées sont absentes. Le template ayant deux "
+        "ancres symétriques et non une ancre et un point B, c'est le registre "
+        "qui est périmé — il a gardé le vocabulaire de `point_towards`. "
+        "Conséquence en cascade : `label_column='anchor_name'` ne désigne "
+        "aucune colonne, donc `test_query_mentions_its_context` lève KeyError "
+        "au lieu de comparer l'énoncé à son libellé"
+    ),
+    "area_inside": _CATEGORY_QUERY_ABSENTE,
+    "area_direction": _CATEGORY_QUERY_ABSENTE,
+    "street_along": _CATEGORY_QUERY_ABSENTE,
+}
+
+#: Templates dont la colonne désignée par `label_column` est absente.
+#: **Sous-ensemble strict de `MISDECLARED_CONTEXT_COLUMNS`** : les sept autres
+#: mal déclarés publient bien leur libellé (`anchor_name`, `area_name`,
+#: `street_name`), seules d'*autres* colonnes leur manquent. Eux seuls peuvent
+#: faire lever `test_query_mentions_its_context`.
+MISSING_LABEL_COLUMN = {
+    "point_between": MISDECLARED_CONTEXT_COLUMNS["point_between"],
+}
+
+#: Templates dont la colonne `function` nomme une fonction absente du module.
+#:
+#: `function` est la seule trace, dans le benchmark enregistré, de la manière
+#: dont la vérité terrain a été calculée : le nom doit pouvoir être résolu pour
+#: que le jeu reste auditable. Le refactor a renommé les helpers sans toucher à
+#: la chaîne publiée.
+#:
+#: À corriger des deux côtés en même temps : `targets/ellypses.py` aiguille sur
+#: ces mêmes chaînes (`get_ellypse`, :69-141), donc renommer la valeur publiée
+#: sans renommer la branche correspondante casserait le calcul des ellipses.
+STALE_FUNCTION_NAMES = {
+    "point_near_cardinal": (
+        "publie `function='cardinal_azimuth_sql'`, mais le module ne définit "
+        "que `pack_by_direction` (point_near_cardinal.py:20) — l'ancien nom a "
+        "survécu au renommage du helper"
+    ),
+    "area_inside": (
+        "publie `function='inside_area'`, nom d'une fonction qui n'existe plus "
+        "du tout : `make_question_area_inside` calcule la vérité terrain en "
+        "ligne (area_inside.py:37) depuis la fusion du helper"
+    ),
+    "area_border": (
+        "publie `function='border_area'`, mais le helper s'appelle "
+        "`pois_near_border` (area_border.py:10)"
+    ),
+    "area_direction": (
+        "publie `function='direction_area'`, mais le helper s'appelle "
+        "`segregate_pois` (area_direction.py:10)"
     ),
 }
 
@@ -103,23 +222,61 @@ MISDECLARED_CONTEXT_COLUMNS = {
 #:
 #: `plot_question` a besoin des trois listes `id`, `name` et `rank` — pas de
 #: `dist`. `area_direction`, à qui il ne manque que `dist`, reste donc
-#: affichable et ne figure pas ici ; `point_between`, à qui il manque aussi
-#: `rank`, ne l'est pas. Sans cette distinction, `area_direction` serait marqué
-#: xfail sur un test qu'il passe, et le XPASS(strict) ferait échouer la suite
-#: pour un défaut qui n'existe pas.
+#: affichable et ne figure pas ici. La table est vide, et le test qu'elle pilote
+#: devient une garantie plutôt qu'un constat.
 UNPLOTTABLE_TEMPLATES = {}
+
+#: Modules qui importent des noms qu'ils n'utilisent jamais.
+#:
+#: Famille à part des `IMPORT_ERRORS` : celle-ci est indexée par chemin de
+#: module et ne concerne pas les douze templates, mais les cibles ajoutées par
+#: f1be9c1.
+#:
+#: Ce ne sont pas de simples imports morts. scikit-learn ne figure pas dans les
+#: `dependencies` de `pyproject.toml` : il n'arrive que par l'extra `nlp`, dont
+#: `sentence-transformers` le tire transitivement (uv.lock:1916). Après un
+#: `uv sync` sans extras — l'installation que le README décrit — les deux
+#: modules lèvent donc `ModuleNotFoundError` et `get_ellypse` comme `make_mask`
+#: sont injoignables. Avec `--all-extras`, ce que fait la CI, ils s'importent :
+#: le défaut est donc invisible la moitié du temps, et c'est ce qui le rend
+#: coûteux à diagnostiquer.
+#:
+#: La correction est dans les deux fichiers, pas dans `pyproject.toml` : aucun
+#: des deux n'appelle `train_test_split`, `LogisticRegression` ni `Random`.
+#: Déclarer scikit-learn pour les satisfaire alourdirait l'installation pour du
+#: code qui ne s'en sert pas.
+DEAD_IMPORTS = {
+    "benchmark_pipeline.generator.targets.ellypses": (
+        "ellypses.py:2-3 importe `random.Random` et "
+        "`sklearn.model_selection.train_test_split` sans jamais les utiliser — "
+        "le module ne se sert que de `math`. Le second rend l'import du module "
+        "impossible sans l'extra `nlp`, donc `get_ellypse` injoignable"
+    ),
+    "benchmark_pipeline.generator.targets.mask_anchors": (
+        "mask_anchors.py:1-3 importe `sklearn.linear_model.LogisticRegression`, "
+        "`sklearn.model_selection.train_test_split` et `random.Random`, tous "
+        "trois inutilisés — le module ne se sert que de `re` et `pandas`. Même "
+        "conséquence : `make_mask` et `get_anchors` injoignables sans l'extra"
+    ),
+}
 
 #: Templates qui laissent passer des questions sans aucune réponse.
 UNANSWERABLE_TEMPLATES = {
     "point_near_metric": (
-        "point_near_metric.py — aucun garde-fou sur un résultat vide : un "
-        "rayon de 100 m autour d'une ancre isolée ne trouve rien, et la "
-        "question est tout de même ajoutée au benchmark (mesuré : 4/20 à nb_q=10)"
+        "point_near_metric.py:63-76 — aucun garde-fou sur un résultat vide : un "
+        "rayon de 100 m autour d'une ancre isolée ne trouve rien, et la question "
+        "est ajoutée au benchmark quand même. Mesuré : 3 questions vides sur 40 "
+        "à nb_q=10, toutes au rayon de 100 m.\n"
+        "  Ce défaut était masqué tant que le template publiait les quatre lots "
+        "de rayons concaténés : aucune ligne n'était alors vide, puisque chacune "
+        "portait la réponse des trois autres. Il est réapparu avec la correction "
+        "de `results` en `result` — une correction en découvre une autre"
     ),
     "point_near_cardinal": (
-        "point_near_cardinal.py — idem : un secteur cardinal peut ne "
-        "contenir aucun POI de la catégorie, la question est ajoutée quand "
-        "même (mesuré : 24/100 à nb_q=21, le plancher du template)"
+        "point_near_cardinal.py:80-94 — les quatre secteurs sont publiés sans "
+        "contrôle : un secteur cardinal peut ne contenir aucun POI, et la "
+        "question est tout de même ajoutée au benchmark. Mesuré : 7 questions "
+        "vides sur 40 à nb_q=10, 10 sur 56 à nb_q=14"
     ),
 }
 
@@ -127,82 +284,91 @@ UNANSWERABLE_TEMPLATES = {
 #: le volume ou la robustesse du jeu produit. Vérifiés un par un dans
 #: `test_known_defects.py`.
 SEMANTIC_DEFECTS = {
+    "quota_multiplie_par_la_boucle_interne": (
+        "`point_near_metric`, `point_near_cardinal` et `area_direction` "
+        "bouclent `nb_q` fois sur l'ancre ou la zone, puis déclinent chaque "
+        "tirage sur leur seconde dimension — quatre rayons, quatre secteurs, "
+        "quatre directions — sans jamais diviser le quota. Ils rendent donc "
+        "exactement 4 × nb_q questions. Mesuré : 40 pour nb_q=10 et 56 pour "
+        "nb_q=14, pour les trois. Le facteur est constant et le volume "
+        "monotone, donc le défaut n'apparaît qu'en comparant à `nb_q` — mais "
+        "il déséquilibre le jeu final, où ces trois templates pèsent quatre "
+        "fois leur part"
+    ),
+    "area_echantillonnage_borne": (
+        "area_inside.py:34 et area_direction.py:42 tirent `nb_q` indices "
+        "**distincts** (`rng.choice(..., replace=False)`) dans un corpus de "
+        "zones qui en compte souvent moins. Deux conséquences :\n"
+        "  * sous `nb_q` zones, les deux templates lèvent `ValueError: Cannot "
+        "take a larger sample than population` au lieu de rendre ce qu'ils "
+        "peuvent. Mesuré : area_direction passe à nb_q=18 (18 zones retenues) "
+        "et lève à nb_q=19 ;\n"
+        "  * `area_inside` écrit `rng.choice(min(len(areas), nb_q), size=nb_q)`, "
+        "donc tire dans `range(nb_q)` et non dans les zones : au-delà de la "
+        "`nb_q`-ième, aucune zone n'est atteignable, quelle que soit la graine. "
+        "Mesuré : 10 zones tirées sur 18, identiques sur 30 graines"
+    ),
     "area_inside_dist_toujours_nulle": (
-        "area_inside.py — `sel.geometry.distance(area)` vaut 0.0 pour tout "
-        "POI intérieur à un polygone, donc `sort_values('dist')` conserve "
-        "l'ordre d'insertion : le classement de la vérité terrain est "
-        "arbitraire (mesuré : 8/10 questions à distance constante). Classer "
-        "par distance au centroïde, ou assumer que « inside » est un ensemble "
-        "non ordonné"
+        "area_inside.py:48 — `results.geometry.distance(area.geometry)` vaut "
+        "0.0 pour tout POI intérieur à un polygone. `results_poi_dist` est donc "
+        "une colonne de zéros et `results_poi_rank` numérote l'ordre du corpus : "
+        "le classement de la vérité terrain est arbitraire. Classer par "
+        "distance au centroïde, ou assumer que « inside » est un ensemble non "
+        "ordonné et cesser de publier un rang"
     ),
-    "area_border_mesure_le_polygone_plein": (
-        "area_border.py — même cause, mais ici la question porte précisément "
-        "sur la bordure : il faut mesurer contre `area.boundary`, seule "
-        "géométrie dont la distance est nulle exactement sur le pourtour. "
-        "Mesuré : les 5 POIs intérieurs du Parc Carre sont tous donnés à 0.0 m "
-        "du bord, alors que l'oracle attend 46,8 à 53,0 m"
+    "area_direction_rang_sans_classement": (
+        "area_direction.py:61 — `segregate_pois` masque les POIs sans les "
+        "trier, donc `results_poi_rank` numérote l'ordre d'apparition dans "
+        "`df_osm`. Même défaut qu'`area_inside_dist_toujours_nulle` mais sans "
+        "même une colonne de distance pour le signaler : deux modèles qui "
+        "ordonnent différemment les mêmes bons POIs sont notés différemment "
+        "sans raison. Trier par distance au centroïde, ou le long de l'axe de "
+        "la direction demandée"
     ),
-    "point_between_quota": (
-        "point_between.py — le quota par catégorie est respecté mais le total "
-        "dépasse `nb_q` d'exactement len(list_cat) : la boucle interne épuise "
-        "sa catégorie avant de revérifier le compte. Mesuré : 15 questions "
-        "pour nb_q=10 (×1,50), 45 pour nb_q=40 (×1,12), 115 pour nb_q=110 "
-        "(×1,05). Le dépassement étant constant en valeur absolue, il ne se "
-        "voit qu'aux petites tailles — d'où un test à nb_q=10 seulement"
-    ),
-    "point_near_cardinal_quota": (
-        "point_near_cardinal.py — même faute que point_near_metric, avec le "
-        "même effet en pire : la boucle parcourt catégories × 4 directions et "
-        "le quota est divisé par leur somme. Mesuré : 40 questions pour "
-        "nb_q=10, 160 pour nb_q=40, 440 pour nb_q=110 — soit exactement 4×, "
-        "le nombre de directions"
-    ),
-    "area_direction_quota": (
-        "area_direction.py — `while nq != n_queries_per_stratum` avec une "
-        "boucle interne sur 4 directions : nq avance de 4 et saute le quota "
-        "(0, 4, 8, 12… n'atteint jamais 10). Seul le plafond `i < 200` arrête "
-        "la boucle, d'où un volume à la fois énorme et non monotone — mesuré : "
-        "802 questions pour nb_q=10, 135 pour nb_q=40, 822 pour nb_q=110"
+    "quota_arrondi_par_strate": (
+        "`area_outside`, `area_border` et `street_opposite_side` fixent leur "
+        "quota à `nb_q // len(list_cat)` par catégorie : la division entière "
+        "perd le reste, et `nb_q` n'est honoré que s'il est divisible par le "
+        "nombre de catégories. Mesuré sur 5 catégories : 10 questions pour "
+        "nb_q=10, mais 10 aussi pour nb_q=12 et nb_q=14. `ratio.allocate` "
+        "existe précisément pour ça — il répartit le reste sur les plus fortes "
+        "parties fractionnaires — et n'est utilisé que par `point_between`"
     ),
     "street_cross_sous_production": (
         "street_cross.py — produit moins de questions que demandé là où les "
-        "autres templates atteignent leur quota : mesuré 7 pour nb_q=10, 25 "
-        "pour 40, 64 pour 110. Le tirage exige deux rues sécantes *et* des POIs "
-        "près du croisement ; il abandonne une strate au lieu de retirer une "
-        "autre paire de rues. Sur un corpus réel le déficit est moins visible, "
-        "mais le jeu reste déséquilibré entre templates"
+        "autres templates atteignent leur quota : mesuré 7 pour nb_q=10. Le "
+        "tirage exige deux rues sécantes *et* des POIs près du croisement ; il "
+        "abandonne une strate au lieu de retirer une autre paire de rues. Sur "
+        "un corpus réel le déficit est moins visible, mais le jeu reste "
+        "déséquilibré entre templates"
     ),
     "street_cross_intersection_vide": (
-        "street_cross.py — `touching_streets(tol=1.0)` retient des rues qui "
+        "street_cross.py:26 — `touching_streets(tol=1.0)` retient des rues qui "
         "ne se croisent pas ; `intersection()` est alors vide et "
         "`distance(vide)` vaut NaN dans results_poi_dist"
     ),
     "street_opposite_side_multilinestring_ignoree": (
-        "street_opposite_side.py:109 — `'MultiString'` au lieu de "
+        "street_opposite_side.py:127 — `'MultiString'` au lieu de "
         "`'MultiLineString'` dans le filtre `geom_type.isin([...])` : toutes "
         "les rues MultiLineString sont écartées du tirage. Le module sait "
-        "pourtant les traiter, `side_of_street` (:30) et `cross_along` (:65) "
+        "pourtant les traiter, `side_of_street` (:31) et `opposite_side` (:66) "
         "prennent explicitement `geoms[0]` pour ce cas"
     ),
+    "mask_anchors_ignore_le_poi_de_reference": (
+        "mask_anchors.py:8 — `ANCHOR_COL = r\"(anchor|area|street)(_[ab])?_name\"` "
+        "ne reconnaît pas `poi_y_name`, la colonne où `street_opposite_side` "
+        "range son POI de référence. Or son énoncé le nomme "
+        "(`f\"{cat_q} across {street_name} from {poi_y_name}\"`) : les tokens de "
+        "ce POI restent à 0 dans `mask_token_anchors`, donc traités comme du "
+        "vocabulaire de la question et non comme une entité nommée. C'est le "
+        "seul libellé d'un template qui échappe au masque"
+    ),
     "street_identity_incoherente": (
-        "street_cross.py:83-84 tire une *valeur* de `id_street` et la passe à "
-        "`.loc`, alors que street_along.py:73 tire dans `df_streets.index`. "
+        "street_cross.py:71-72 tire une *valeur* de `id_street` et la passe à "
+        "`.loc`, alors que street_along.py:58 tire dans `df_streets.index`. "
         "Les deux modules ne s'accordent pas sur ce qui identifie une rue : sur "
         "un `df_streets` réindexé — ce que fait n'importe quel filtrage en "
         "amont — street_cross se trompe de rue en silence, ou lève"
-    ),
-    "point_near_cardinal_garde_fou_off_by_one": (
-        "point_near_cardinal.py:99-100 — `if nb_q <= 20: raise ValueError"
-        "(\"nb_q doit être ≥ 20\")` : le code refuse la valeur que son propre "
-        "message annonce comme valide. Le plancher lui-même est légitime — le "
-        "tirage fait `nb_q_anc // len(list_direction)`, qui vaut 0 en dessous — "
-        "mais il devrait s'écrire `< 20`. Mesuré : nb_q=20 lève, nb_q=21 passe"
-    ),
-    "area_direction_test_de_sous_chaine": (
-        "area_direction.py — `direction in 'north south'` est un test de "
-        "sous-chaîne, pas d'appartenance : juste par accident pour les quatre "
-        "cardinaux, mais accepterait aussi `'north s'` ou `'h so'`. "
-        "`direction in ('south west')` est une chaîne, pas un tuple"
     ),
 }
 
@@ -210,10 +376,11 @@ SEMANTIC_DEFECTS = {
 def merge_reasons(*tables):
     """Fusionne des tables de défauts en `nom -> motif unique`.
 
-    Un template peut figurer dans plusieurs familles — `point_between` est à la
-    fois incohérent, inaffichable et inévaluable. Les motifs sont alors concaténés,
-    pour qu'un seul `xfail` porte toute l'explication : empiler deux marqueurs
-    sur le même cas rendrait le rapport ambigu.
+    Un template peut figurer dans plusieurs familles — `area_direction` est à la
+    fois incohérent, mal déclaré et porteur d'un nom de fonction périmé. Les
+    motifs sont alors concaténés, pour qu'un seul `xfail` porte toute
+    l'explication : empiler deux marqueurs sur le même cas rendrait le rapport
+    ambigu.
     """
     merged = {}
     for table in tables:
