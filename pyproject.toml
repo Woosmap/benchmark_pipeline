@@ -2,7 +2,7 @@
 name = "benchmark_pipeline"
 version = "0.1.0"
 description = "Generation de questions geospatiales a partir de donnees OpenStreetMap"
-requires-python = "<3.14"
+requires-python = ">=3.14"
 
 # Librairies utilisees dans benchmark_pipeline/
 dependencies = [

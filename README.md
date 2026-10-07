@@ -23,7 +23,7 @@ Chaque template géospatial suit le même contrat :
 
 ## Prérequis
 
-- **Python 3.11** (`requires-python = ">=3.11"`). Version de référence : 3.11.15.
+- **Python 3.14** (`requires-python = ">=3.14"`).
 - Un accès réseau pour les chargeurs OSM : ils interrogent l'API Overpass via
   `osmnx`. Les tests, eux, ne touchent pas au réseau.
 
