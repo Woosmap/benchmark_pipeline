@@ -15,18 +15,11 @@ Le procédé est un produit cartésien en deux temps :
 Ce module dépend donc de `geospatial` et jamais l'inverse : c'est ce qui justifie
 qu'il vive dans `composite/` plutôt qu'au milieu des templates spatiaux, où sa
 première version importait le paquet qui la contenait.
-
-TODO: le nom `make_question_geo` date de l'époque où la fonction ne faisait que
-    la partie spatiale. Elle produit maintenant des questions composites, et le
-    nom devrait le dire.
-TODO: `from ... geospatial import *` n'est plus utilisé — les générateurs sont
-    atteints par `REGISTRY`, pas par leur nom de module. L'étoile masque
-    l'origine réelle des symboles sans rien apporter.
 """
 
-from benchmark_pipeline.generator.template_question.geospatial import *
 from collections import defaultdict
 from itertools import combinations
+import numpy as np
 import pandas as pd
 import inspect
 
@@ -34,20 +27,33 @@ from benchmark_pipeline.generator.template_question import geospatial
 from benchmark_pipeline.generator.template_question.registry import REGISTRY
 from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.config import FEATURES
+from benchmark_pipeline.generator.features import Feature
 
 
 #: Les douze générateurs spatiaux, désignés par leur clé dans `REGISTRY` — donc
 #: par leur nom de fonction, et non par le nom court du registre de `schema.py`.
 #: Les deux registres cohabitent : celui-ci est peuplé par le décorateur
 #: `@template` à l'import de `geospatial`.
-list_template = ['make_question_area_border', 'make_question_area_direction',
-                 'make_question_area_inside', 'make_question_area_outside',
+
+list_template = ['make_question_point_near']
+"""
+['make_question_area_border',
+                 'make_question_area_inside', 
                  'make_question_point_between', 'make_question_point_near_cardinal',
                  'make_question_point_near_metric', 'make_question_point_near',
                  'make_question_point_towards', 'make_question_street_along',
                  'make_question_street_cross', 'make_question_street_opposite_side']
+"""
+#'make_question_area_outside', 'make_question_area_direction'
 
-def feature_agregation(df, nb_feature, nb_question, features_cols, dropna=True, seed=42):
+def feature_agregation(
+        df, 
+        nb_feature, 
+        nb_question, 
+        features_cols, 
+        dropna, 
+        seed
+    ):
     """Regroupe les POIs par combinaison de valeurs d'attributs.
 
     Parcourt toutes les combinaisons de `nb_feature` colonnes prises parmi
@@ -76,28 +82,126 @@ def feature_agregation(df, nb_feature, nb_question, features_cols, dropna=True, 
             `results_features_pois_id` (les `poi_id` du groupe), `size`, plus une
             colonne par attribut de la combinaison.
     """
-    ids = df["poi_id"]
+    features_cols = [getattr(f, "COLUMN", f) for f in features_cols]
     rows = []
     for combo in combinations(features_cols, nb_feature):
         df_full = df.dropna(subset=list(combo))
+        poi_ids = df_full["poi_id"].to_numpy()
         g = df_full.groupby(list(combo), dropna=dropna, observed=True)
-        for values, idx in g.groups.items():
-            # `groups` rend une valeur nue pour une clé simple, un tuple sinon :
-            # on normalise pour que `zip(combo, values)` marche dans les deux cas.
+        for values, positions in g.indices.items():
             values = values if isinstance(values, tuple) else (values,)
             rows.append({
                 "features": combo,
                 "values": values,
                 "number features": nb_feature,
-                "results_features_pois_id": list(ids.loc[idx]),
-                "size": len(idx),
+                "results_features_pois_id": (poi_ids, positions),
+                "size": len(positions),
                 **dict(zip(combo, values)),
             })
 
-    out = pd.DataFrame(rows)
-    return (out.sample(n=min(nb_question, len(out)), random_state=seed))
+    # Aucun groupe : frame vide sans colonnes, comme avant. L'affectation qui suit
+    # lèverait un KeyError dessus.
+    if not rows:
+        return pd.DataFrame(rows)
 
-def question_geo_semantic(df_question, df_osm, nb_q, features_cols, ratio=None, seed=42):
+    out = pd.DataFrame(rows).sample(n=min(nb_question, len(rows)), random_state=seed)
+    out["results_features_pois_id"] = [
+        list(ids[positions]) for ids, positions in out["results_features_pois_id"]
+    ]
+    return out
+
+def prepare_feature_groups(df, features_cols, nb_features, dropna):
+    """Associe à chaque POI son code de groupe, pour chaque combinaison d'attributs.
+
+    Le regroupement est une propriété du corpus, pas de la question : le calculer
+    une seule fois évite de refaire un `dropna` et un `groupby` par question et par
+    combinaison.
+
+    Args:
+        df (DataFrame): Corpus complet, avec `poi_id` et les colonnes d'attributs.
+        features_cols (list[str] | list[Feature]): Colonnes d'attributs éligibles.
+        nb_features (iterable[int]): Tailles de combinaison à préparer.
+        dropna (bool): Passé à `groupby`, comme dans `feature_agregation`.
+
+    Returns:
+        dict: `{combo: (codes, cles)}` — `codes` donne le groupe de chaque ligne de
+            `df`, -1 si un attribut de la combinaison est manquant ; `cles[code]`
+            donne le tuple de valeurs correspondant.
+    """
+    features_cols = [getattr(f, "COLUMN", f) for f in features_cols]
+    tables = {}
+    for nb in set(nb_features):
+        for combo in combinations(features_cols, nb):
+            # `dropna(subset=...)` retirait déjà ces lignes avant le groupby : on
+            # reproduit le masque, sans la copie de frame qu'il entraînait.
+            valide = df[list(combo)].notna().all(axis=1).to_numpy()
+            groupes = df.loc[valide].groupby(list(combo), dropna=dropna, observed=True)
+            codes = np.full(len(df), -1, dtype=np.int64)
+            codes[valide] = groupes.ngroup().to_numpy()
+            cles = [k if isinstance(k, tuple) else (k,) for k in groupes.indices]
+            tables[combo] = (codes, cles)
+    return tables
+
+
+def feature_agregation_indexee(poi_ids, positions, tables, nb_feature, nb_question, seed):
+    """Version de `feature_agregation` qui lit les groupes précalculés.
+
+    Args:
+        poi_ids (ndarray): `poi_id` du corpus, dans l'ordre des lignes.
+        positions (ndarray): Positions, triées, des POIs retenus par la question.
+        tables (dict): Sortie de `prepare_feature_groups`.
+        nb_feature (int): Nombre d'attributs combinés.
+        nb_question (int): Nombre maximal de groupes retournés.
+        seed (int): Graine de l'échantillonnage final.
+
+    Returns:
+        DataFrame: Mêmes colonnes que `feature_agregation`.
+    """
+    rows = []
+    for combo, (codes, cles) in tables.items():
+        if len(combo) != nb_feature:
+            continue
+        sous_codes = codes[positions]
+        garde = sous_codes >= 0
+        sous_codes, sous_positions = sous_codes[garde], positions[garde]
+
+        # Trier par code regroupe les lignes d'un même groupe en tranches contiguës ;
+        # `kind="stable"` garde l'ordre du corpus à l'intérieur de chaque tranche.
+        ordre = np.argsort(sous_codes, kind="stable")
+        sous_codes, sous_positions = sous_codes[ordre], sous_positions[ordre]
+        groupes, debuts, tailles = np.unique(sous_codes, return_index=True, return_counts=True)
+
+        for code, debut, taille in zip(groupes, debuts, tailles):
+            values = cles[code]
+            rows.append({
+                "features": combo,
+                "values": values,
+                "number features": nb_feature,
+                # Tranche de positions : la liste d'ids n'est construite qu'au tirage.
+                "results_features_pois_id": sous_positions[debut:debut + taille],
+                "size": int(taille),
+                **dict(zip(combo, values)),
+            })
+
+    if not rows:
+        return pd.DataFrame(rows)
+
+    out = pd.DataFrame(rows).sample(n=min(nb_question, len(rows)), random_state=seed)
+    out["results_features_pois_id"] = [
+        list(poi_ids[tranche]) for tranche in out["results_features_pois_id"]
+    ]
+    return out
+
+
+def question_geo_semantic(
+        df_question,
+        df_osm,
+        nb_q, 
+        features_cols, 
+        ratio, 
+        seed,
+        dropna,
+    ):
     """Croise chaque question spatiale avec les groupes d'attributs de sa réponse.
 
     Pour une question donnée, seuls les POIs de sa vérité terrain sont éligibles :
@@ -131,45 +235,39 @@ def question_geo_semantic(df_question, df_osm, nb_q, features_cols, ratio=None, 
     """
     if len(df_question)==0:
         assert(f"Le tableau {df_question} est vide.")
-    if ratio is None:
-        ratio = {i: 1 for i in range(1, len(features_cols) + 1)}
     balance = allocate(nb_q, ratio)
+    tables = prepare_feature_groups(df_osm, features_cols, balance.keys(), dropna)
+    rang_poi = pd.Index(df_osm["poi_id"])
+    poi_ids = df_osm["poi_id"].to_numpy()
     df_out = []
     for _, question in df_question.iterrows():
-        # Restreindre au corpus de la réponse : la contrainte sémantique doit
-        # porter sur des POIs que la question spatiale retient déjà.
         id_poi = question["results_poi_id"]
-        sub_df = df_osm[df_osm['poi_id'].isin(set(id_poi))]
+        positions = np.unique(rang_poi.get_indexer(id_poi))
+        positions = positions[positions >= 0]
         for nb_f, nb_row in balance.items():
-            answers_poi = feature_agregation(sub_df, nb_f, nb_row, features_cols, seed=seed)
-            # `how="cross"` duplique la ligne de question autant de fois qu'il y
-            # a de groupes : une question composite par couple.
+            answers_poi = feature_agregation_indexee(poi_ids, positions, tables, nb_f, nb_row, seed)
             res = question.to_frame().T.merge(answers_poi, how="cross")
             df_out.append(res)
     return pd.concat(df_out, ignore_index=True)
 
 
-def make_question_geo(
+def make_question_composite(
         df_osm, 
-        df_area=None, 
-        df_streets=None, 
+        df_area, 
+        df_streets, 
         nb_q_by_temp=100, 
         nb_q_by_feat=10, 
         list_template=list_template, 
-        ratio=None, 
+        ratio={1: 1, 2: 1, 3: 1}, 
         feature_cols=FEATURES,
-        seed=42
+        seed=42,
+        dropna=True, 
     ):
     """Produit le jeu complet de questions composites.
 
     Enchaîne les trois étapes : générer les questions spatiales, les croiser avec
     les groupes d'attributs, puis réécrire l'énoncé pour que la contrainte
     sémantique y apparaisse.
-
-    Les générateurs n'ont pas tous la même signature — quatre veulent `df_area`,
-    trois `df_streets`, les autres `df_osm` seul. `inspect.signature` filtre donc
-    `sources` pour ne passer à chacun que ce qu'il déclare, ce qui permet de les
-    appeler en boucle sans les connaître.
 
     Args:
         df_osm (GeoDataFrame): Corpus de POIs, avec les colonnes d'attributs.
@@ -185,38 +283,15 @@ def make_question_geo(
     Returns:
         DataFrame: Les questions composites, avec la colonne `query_geo_semantic`
             portant l'énoncé enrichi et `query` conservant l'énoncé spatial seul.
-
-    TODO: un générateur qui rend autre chose qu'un DataFrame casse le `pd.concat`
-        pour le lot entier, avec un message qui ne le nomme pas
-        (`cannot concatenate object of type '<class 'str'>'`). C'est le cas de
-        `make_question_point_near_cardinal` sous son seuil, qui rend un message
-        d'erreur au lieu de le lever. Vérifier le type en sortie de boucle, ou
-        faire lever les générateurs.
-    TODO: `df_area=None` et `df_streets=None` par défaut, alors que sept des
-        douze templates les exigent : l'appel `make_question_geo(df_osm)` lève un
-        `AttributeError: 'NoneType' object has no attribute 'geometry'` depuis
-        l'intérieur d'un template. Écarter les templates dont les sources
-        manquent, ou exiger les arguments.
-    TODO: `seed=42` est écrit en dur dans l'appel à `question_geo_semantic`, ce
-        qui ignore le paramètre `seed` de cette fonction.
-    TODO: `pd.DataFrame(query_row)` fabrique une frame à une colonne que pandas
-        doit réaligner sur l'index. `df_geo_sem["query_geo_semantic"] = query_row`
-        écrit la liste directement, sans alignement — équivalent ici parce que
-        `ignore_index=True` a donné un `RangeIndex`, mais robuste dans le cas
-        contraire.
     """
     sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
-    # Chaque générateur ne reçoit que les sources que sa signature déclare.
     df_geo_q = pd.concat(
         [REGISTRY[name](nb_q=nb_q_by_temp,
                         **{k: v for k, v in sources.items()
                            if k in inspect.signature(REGISTRY[name]).parameters})
          for name in list_template],
         ignore_index=True)
-    df_geo_sem = question_geo_semantic(df_geo_q, df_osm, nb_q_by_feat, feature_cols, ratio, seed=42)
-    # Réécriture de l'énoncé : le qualificatif sémantique se glisse juste après
-    # la catégorie cherchée, qui est toujours le premier mot.
-    #   « cafe near poi5 »  ->  « cafe cuisine=italian near poi5 »
+    df_geo_sem = question_geo_semantic(df_geo_q, df_osm, nb_q_by_feat, feature_cols, ratio, seed, dropna)
     query_row = []
     for _, row in df_geo_sem.iterrows():
         mots = row["query"].split(" ")               

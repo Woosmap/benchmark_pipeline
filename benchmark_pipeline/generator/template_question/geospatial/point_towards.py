@@ -10,7 +10,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
+def towards_b_sql(df, ax, ay, bx, by, k=100,
                   half_width=70.0, con=None):
     """Retourne les POIs d'une catégorie situés dans la direction d'un point B depuis un point A.
 
@@ -25,7 +25,6 @@ def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
         ay (float): Ordonnée Lambert-93 du point A.
         bx (float): Abscisse Lambert-93 du point B, qui donne la direction.
         by (float): Ordonnée Lambert-93 du point B.
-        cat (str): Catégorie de POI recherchée.
         k (int): Nombre maximal de résultats retournés.
         half_width (float): Demi-ouverture du cône, en degrés.
         con (duckdb.DuckDBPyConnection | None): Connexion à réutiliser.
@@ -50,7 +49,7 @@ def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
             SELECT (degrees(atan2($bx - $ax, $by - $ay)) + 360) % 360 AS center
         ), g AS (
             SELECT poi_id, poi_name, ST_GeomFromWKB(geom_wkb) AS geom
-            FROM poi WHERE category = $cat
+            FROM poi 
         ), d AS (
             SELECT poi_id, poi_name,
                    sqrt(pow(ST_X(geom) - $ax, 2) + pow(ST_Y(geom) - $ay, 2)) AS dist,
@@ -63,7 +62,7 @@ def towards_b_sql(df, ax, ay, bx, by, cat, k=100,
         WHERE abs(((d.az - ab.center + 540)::DOUBLE % 360) - 180) <= $half
         ORDER BY d.dist
         LIMIT $k
-    """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "cat": cat, "k": k,
+    """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "k": k,
           "half": half_width}).df()
 
 @template("make_question_point_towards")
@@ -81,8 +80,8 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
 
     Returns:
         DataFrame: Une ligne par question. Mêmes colonnes que
-            `make_question_nearsql`, plus `point_b_index`, `point_b_name`,
-            `point_b_category`, `point_b_x`, `point_b_y`.
+            `make_question_nearsql`, plus `anchor_b_index`, `anchor_b_name`,
+            `anchor_b_category`, `anchor_b_x`, `anchor_b_y`.
     """
     xy = np.column_stack([df_osm.x.values, df_osm.y.values])   # (n, 2)
     tree = cKDTree(xy)
@@ -90,52 +89,31 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
     pid = df_osm["poi_id"].to_numpy()
-    # Une strate par CELLULE (catégorie d'ancre × catégorie interrogée) : les
-    # deux marges sont donc équilibrées, et la somme des cellules vaut nb_q.
-    # Allouer sur les cellules plutôt que diviser nb_q évite le plancher du
-    # produit cartésien, qui ne peut pas descendre sous une question par cellule.
-    # Les cellules sont rangées en diagonales cycliques : chaque diagonale
-    # touche une fois chaque catégorie d'ancre ET une fois chaque catégorie
-    # interrogée. Le reste de la division d'`allocate`, qui va toujours aux
-    # premières clés, se répartit donc également sur les deux marges — rangées
-    # par `product`, elles retomberaient toutes sur les deux mêmes ancres.
-    n_cat = len(list_cat)
-    cellules = [(list_cat[i], list_cat[(i + j) % n_cat])
-                for j in range(n_cat) for i in range(n_cat)]
-    poids = {c: (ratio or {}).get(c[0], 1) for c in cellules}
-    for (cat_anc, cat_q), nb_cell in allocate(nb_q, poids).items():
-        if not nb_cell:
-            continue
+    for k in range(nb_q):
+        cat_anc = list_cat[k % len(list_cat)]
         sub = df_osm[df_osm["category"] == cat_anc]
-        anchors = sub.sample(n=min(nb_cell, len(sub)), random_state=rng)
-        for anchor in anchors.itertuples():
-            index_b = rng.choice([k for k in tree.query_ball_point([anchor.x, anchor.y], 1000)
-                                            if pid[k] != anchor.poi_id])
-            point_b = df_osm.iloc[index_b]
-            
-            results = towards_b_sql(df_osm, anchor.x, anchor.y, point_b.x, point_b.y, cat_q, half_width=half_width)
-            if cat_anc == cat_q:
-                results = results[results["poi_id"] != anchor.poi_id]
-            if cat_q == point_b.category:
-                results = results[results["poi_id"] != point_b.poi_id]
+        anchor = sub.sample(1, random_state=rng).iloc[0]
+        index_b = rng.choice([k for k in tree.query_ball_point([anchor.x, anchor.y], 1000)
+                                        if pid[k] != anchor.poi_id])
+        anchor_b = df_osm.iloc[index_b]
+        results = towards_b_sql(df_osm, anchor.x, anchor.y, anchor_b.x, anchor_b.y, half_width=half_width)
+        results = results[results["poi_id"] != anchor.poi_id]
+        results = results[results["poi_id"] != anchor_b.poi_id]
 
-            dic_benchmark["query"].append(f"{cat_q} near {anchor.poi_name} towards {point_b.poi_name}")
-            dic_benchmark["anchor_index"].append(anchor.poi_id)
-            dic_benchmark["anchor_name"].append(anchor.poi_name)
-            dic_benchmark["anchor_category"].append(anchor.category)
-            dic_benchmark["anchor_x"].append(anchor.x)
-            dic_benchmark["anchor_y"].append(anchor.y)
-            dic_benchmark["point_b_index"].append(point_b.poi_id)
-            dic_benchmark["point_b_name"].append(point_b.poi_name)
-            dic_benchmark["point_b_category"].append(point_b.category)
-            dic_benchmark["point_b_x"].append(point_b.x)
-            dic_benchmark["point_b_y"].append(point_b.y)
-            dic_benchmark["category_query"].append(cat_q)
-            dic_benchmark["same_cat"].append(cat_anc==cat_q)
-            dic_benchmark["function"].append("towards_b_sql")
-            dic_benchmark["results_poi_id"].append(list(results.poi_id))
-            dic_benchmark["results_poi_name"].append(list(results.poi_name))
-            dic_benchmark["results_poi_dist"].append(list(results.dist))
-            dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
-
+        dic_benchmark["query"].append(f"pois near {anchor.poi_name} towards {anchor_b.poi_name}")
+        dic_benchmark["anchor_index"].append(anchor.poi_id)
+        dic_benchmark["anchor_name"].append(anchor.poi_name)
+        dic_benchmark["anchor_category"].append(anchor.category)
+        dic_benchmark["anchor_x"].append(anchor.x)
+        dic_benchmark["anchor_y"].append(anchor.y)
+        dic_benchmark["anchor_b_index"].append(anchor_b.poi_id)
+        dic_benchmark["anchor_b_name"].append(anchor_b.poi_name)
+        dic_benchmark["anchor_b_category"].append(anchor_b.category)
+        dic_benchmark["anchor_b_x"].append(anchor_b.x)
+        dic_benchmark["anchor_b_y"].append(anchor_b.y)
+        dic_benchmark["function"].append("towards_b_sql")
+        dic_benchmark["results_poi_id"].append(list(results.poi_id))
+        dic_benchmark["results_poi_name"].append(list(results.poi_name))
+        dic_benchmark["results_poi_dist"].append(list(results.dist))
+        dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
     return pd.DataFrame(dic_benchmark)

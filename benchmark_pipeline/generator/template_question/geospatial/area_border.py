@@ -7,34 +7,14 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def border_area(area, category, df_osm, cat_col="category"):
-    """Classe les POIs d'une catégorie par distance à une zone.
-
-    Contrairement à `inside_area` et `outside_area`, reçoit l'ensemble des POIs
-    sans restriction préalable.
-
-    Args:
-        area (BaseGeometry): Polygone de la zone, en EPSG:2154.
-        category (str): Catégorie de POI recherchée.
-        df_osm (GeoDataFrame): POIs candidats, non filtrés.
-        cat_col (str): Nom de la colonne de catégorie.
-
-    Returns:
-        DataFrame: POIs de la catégorie, avec `dist`, triés par distance
-            croissante et réindexés.
-
-    TODO: ne mesure pas la distance au bord mais au polygone plein. Tous les POIs
-        intérieurs sont donc à distance 0 et occupent la tête du classement dans
-        un ordre arbitraire, alors que la question porte précisément sur la
-        bordure. Mesurer contre `area.boundary` (ou `area.exterior`), qui est la
-        seule géométrie dont la distance est nulle exactement sur le pourtour.
-    """
-    sel = df_osm[df_osm[cat_col] == category].copy()
-    sel["dist"] = sel.geometry.distance(area)
-    return sel.sort_values("dist").reset_index(drop=True)
+def pois_near_border(df_osm, area, band):
+    border = area.boundary
+    idx = df_osm.sindex.query(border, predicate="dwithin", distance=band)
+    pois = df_osm.iloc[idx]
+    return pois.assign(dist=pois.geometry.distance(border)).sort_values("dist")
 
 @template("make_question_area_border")
-def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
+def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=110, seed=42):
     """Génère les questions de bordure « X en limite de la zone Z ».
 
     Pour chaque catégorie cible, tire des zones jusqu'à atteindre le quota, dans
@@ -48,14 +28,7 @@ def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
         seed (int): Graine du générateur aléatoire.
 
     Returns:
-        DataFrame: Une ligne par question, mêmes colonnes que
-            `make_question_insidearea`.
-
-    TODO: hérite du défaut de `border_area` — la vérité terrain est actuellement
-        « les POIs intérieurs, en ordre arbitraire », pas « les POIs en bordure ».
-    TODO: aucun rayon maximal ; ajouter une bande (`|dist| <= 50 m` autour du
-        bord) pour que la relation ait un sens.
-    TODO: `results_poi_rank` 0-based, cf. `make_question_insidearea`.
+        DataFrame: Une ligne par question, mêmes colonnes que `make_question_insidearea`.
     """
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
@@ -70,7 +43,7 @@ def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
         while nq != n_queries_per_stratum and i<200:
             i+=1
             area = areas.loc[rng.choice(areas.index)]
-            results = border_area(area.geometry, cat_q, df_osm)
+            results = pois_near_border(df_osm, area.geometry, band)
             if results.empty:
                 continue
             nq +=1

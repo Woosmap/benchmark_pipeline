@@ -12,10 +12,6 @@ from benchmark_pipeline.generator.template_question.registry import template
 def touching_streets(df_streets, street, tol=1.0):
     """Retourne les rues en contact avec une rue donnée.
 
-    Le critère est métrique et non topologique : toute rue dont la géométrie passe
-    à moins de `tol` mètres est retenue, ce qui couvre les nœuds partagés comme
-    les extrémités jointives imparfaitement numérisées.
-
     Args:
         df_streets (GeoDataFrame): Rues en EPSG:2154.
         id_street: Index de la rue de référence dans `df_streets`.
@@ -25,16 +21,12 @@ def touching_streets(df_streets, street, tol=1.0):
         GeoDataFrame: Sous-ensemble de `df_streets` en contact, la rue de
             référence exclue.
     """
-    
     geom = street.geometry
-    
     d = df_streets.geometry.distance(geom)
     return df_streets[(d <= tol) & (df_streets['id_street'] != float(street.id_street))]
 
 def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
     """Retourne les POIs d'une catégorie les plus proches du croisement de deux rues.
-
-    Le croisement est l'intersection géométrique des deux rues.
 
     Args:
         df (GeoDataFrame): POIs candidats en EPSG:2154.
@@ -57,10 +49,6 @@ def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
 @template("make_question_street_cross")
 def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """Génère les questions de carrefour « X au croisement de R1 et R2 ».
-
-    Pour chaque catégorie cible, tire une rue puis une rue sécante parmi celles en
-    contact avec elle. Les rues sans sécante sont ignorées, si bien que le nombre
-    de questions effectivement produites peut rester sous le quota.
 
     Args:
         df_osm (GeoDataFrame): POIs cibles en EPSG:2154.

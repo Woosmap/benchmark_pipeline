@@ -96,42 +96,60 @@ def make_rows(
         n_hard: int,
         nb_unmatches: int,
         is_test: bool = False,
+        colonnes_cibles: Sequence[str] = (),
+        colonne_question: str = "query_geo_semantic",
+        colonne_pois: str = "results_features_pois_id",
+        colonne_pois_spatiaux: str = "results_poi_id",
     ) -> DataFrame:
-    """Une ligne par question : texte, POI pertinents, négatifs difficiles.
+    """Une ligne par question : texte, POI pertinents, cibles, négatifs difficiles.
 
     Args:
-        df_question: questions, colonnes `question`, `pois`, `features`.
+        df_question: questions composites, colonnes `features`, `values`, plus
+            celles désignées par `colonne_question`, `colonne_pois` et
+            `colonnes_cibles`.
         df_osm: corpus de POI.
         positions: positions des questions à traiter.
         rng: générateur numpy.
         n_hard: négatifs difficiles tirés par question.
-        nb_unmatches: transmis à `hard_negatives`.
+        nb_unmatches: nombre de contraintes qu'un négatif difficile peut rater.
+        is_test: sans négatifs difficiles.
+        colonnes_cibles: colonnes de `df_question` recopiées telles quelles dans
+            chaque ligne, par exemple `("ellypse",)`.
+        colonne_question: colonne portant l'énoncé. `query_geo_semantic` est
+            l'énoncé enrichi de la contrainte d'attribut, `query` le spatial seul.
+        colonne_pois: colonne portant les réponses. `results_features_pois_id` est
+            l'intersection relation spatiale ∩ attributs, `results_poi_id` la
+            réponse spatiale seule.
+        colonne_pois_spatiaux: colonne où puiser les négatifs difficiles — les POIs
+            qui satisfont la relation spatiale mais pas tous les attributs.
 
     Returns:
-        DataFrame avec les colonnes `question`, `pois`, `hard_pois`.
+        DataFrame avec `index`, `question`, `pois`, les `colonnes_cibles`, et
+            `hard_pois` hors test.
     """
     rows = []
     for pos in positions:
-        pois = list(set(df_question["pois"].iloc[pos]))
-        if is_test:
-            rows.append({
-                "index": pos,
-                "question": df_question["question"].iloc[pos],
-                "pois": pois,
-            })
-        else:
-            candidats = hard_negatives(pos, df_question, df_osm, nb_unmatches)
-            hard_pois = [p for p in tirer(rng, candidats, n_hard) if p not in pois]
-            rows.append({
-                "index": pos,
-                "question": df_question["question"].iloc[pos],
-                "pois": pois,
-                "hard_pois": hard_pois,
-            })
+        ligne = df_question.iloc[pos]
+        pois = list(set(ligne[colonne_pois]))
+        row = {
+            "index": pos,
+            "question": ligne[colonne_question],
+            "pois": pois,
+            **{colonne: ligne[colonne] for colonne in colonnes_cibles},
+        }
+        if not is_test:
+            contraintes = dict(zip(ligne["features"], ligne["values"]))
+            spatiaux = df_osm[df_osm["poi_id"].isin(set(ligne[colonne_pois_spatiaux]))]
+            nb_matched = count_matches(spatiaux, contraintes)
+            nb_asked = len(contraintes)
+            candidats = spatiaux["poi_id"][(nb_matched >= nb_asked - nb_unmatches)
+                                           & (nb_matched < nb_asked)].to_numpy()
+            row["hard_pois"] = [p for p in tirer(rng, candidats, n_hard) if p not in pois]
+        rows.append(row)
     return DataFrame(rows)
 
 
-def make_benchmark_question(
+def format_composit_samples(
         df_question: DataFrame, 
         df_osm: DataFrame, 
         rng: Generator,
@@ -141,28 +159,7 @@ def make_benchmark_question(
         nb_hard: int = 20,
         nb_unmatches: int = 1,
     ) -> tuple[list[Batch], NDArray]:
-    """Split des questions, stratification du train, puis construction des batchs.
 
-    Args:
-        df_question: questions.
-        df_osm: corpus de POI.
-        rng: générateur numpy.
-        ratio_test: part réservée au test.
-        ratio_features: proportions par nombre de contraintes, par exemple
-            {1: 0.4, 2: 0.4, 3: 0.2}. `None` garde toutes les questions.
-        ratio_category: proportions par catégorie, par exemple
-            {"restaurant": 0.25, "cafe": 0.25, "bar": 0.25, "hotel": 0.25} pour
-            corriger un corpus déséquilibré. `None` garde toutes les questions.
-            Dans les deux cas, une valeur absente du dict est écartée.
-        batch_size: questions par batch.
-        n_times: variantes par batch, passé à `augment_benchmark`.
-        nb_answers: réponses conservées par question à l'augmentation.
-        nb_hard: négatifs difficiles par question.
-        nb_unmatches: transmis à `hard_negatives`.
-
-    Returns:
-        Les batchs d'entraînement, et les positions de test.
-    """
     train, test = split_train_test(len(df_question), ratio_test, rng)
     train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches)
     test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, is_test=True)
