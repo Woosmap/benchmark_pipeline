@@ -13,7 +13,7 @@ def towards_b_sql(df, ax, ay, bx, by, k=100,
                   half_width=70.0, con=None):
     """Retourne les POIs d'une catégorie situés dans la direction d'un point B depuis un point A.
 
-    Généralise `cardinal_azimuth_sql` en remplaçant la direction cardinale par
+    Généralise `pack_by_direction` en remplaçant la direction cardinale par
     l'azimut du segment A→B. Le secteur est centré sur cet azimut ; les distances
     restent mesurées depuis A, si bien qu'un POI au-delà de B est retenu tant
     qu'il reste dans le cône.
@@ -35,7 +35,7 @@ def towards_b_sql(df, ax, ay, bx, by, k=100,
     Note:
         Distance euclidienne et azimut planaire, sans correction de latitude :
         c'est la forme correcte en CRS projeté, et le modèle à recopier dans
-        `cardinal_azimuth_sql`.
+        `pack_by_direction`.
     """
     if con is None:
         con = duckdb.connect()

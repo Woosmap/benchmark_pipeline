@@ -27,7 +27,7 @@ import pathlib
 import pytest
 
 from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
-from tests.known_defects import DEAD_IMPORTS, SEMANTIC_DEFECTS
+from tests.known_defects import DEAD_IMPORTS
 
 ELLYPSES = "benchmark_pipeline.generator.targets.ellypses"
 MASK_ANCHORS = "benchmark_pipeline.generator.targets.mask_anchors"
@@ -204,7 +204,7 @@ def test_cardinal_ellipse_is_offset_towards_its_direction(ellypses, direction,
     """
     import pandas as pd
 
-    row = pd.Series({"function": "cardinal_azimuth_sql", "direction": direction})
+    row = pd.Series({"function": "pack_by_direction", "direction": direction})
     dx, dy, _, _, _ = ellypses.get_ellypse(row)
 
     assert math.copysign(1, dx) * (dx != 0) == signe_dx, (
@@ -321,8 +321,6 @@ def test_get_anchors_collects_the_context_labels(mask_anchors, run_template):
     assert set(anchors) == {row["anchor_a_name"], row["anchor_b_name"]}
 
 
-@pytest.mark.xfail(strict=True,
-                   reason=SEMANTIC_DEFECTS["mask_anchors_ignore_le_poi_de_reference"])
 def test_get_anchors_collects_the_reference_poi_of_opposite_side(mask_anchors,
                                                                  run_template):
     """Le POI de référence d'`opposite_side` est une ancre comme les autres.

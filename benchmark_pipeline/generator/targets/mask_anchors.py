@@ -2,7 +2,11 @@ import re
 
 import pandas as pd
 
-ANCHOR_COL = re.compile(r"(anchor|area|street)(_[ab])?_name")
+#: Colonnes qui portent le libellé d'une ancre, c'est-à-dire un nom que
+#: l'énoncé cite et que le masque doit donc couvrir. `poi_y_name` en fait
+#: partie : `street_opposite_side` y range son POI de référence, que son énoncé
+#: nomme (« X across rue Y from Z ») — l'omettre laissait ce nom non masqué.
+ANCHOR_COL = re.compile(r"(anchor|area|street)(_[ab])?_name|poi_y_name")
 
 def get_anchors(row: pd.Series) -> list[str]:
     return [row[col] for col in row.index

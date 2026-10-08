@@ -68,7 +68,12 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    for k in range(nb_q):
+    # `nb_q` est un plafond sur les *questions*, pas sur les ancres : chacune
+    # est déclinée sur chaque secteur de `list_direction`, donc le quota se divise d'abord. Sans cette
+    # division le template rendait 4 × nb_q. Diviser plutôt que tronquer après
+    # coup garde chaque ancre complet — couper dans le tas amputerait
+    # les dernières de leurs directions.
+    for k in range(nb_q // len(list_direction)):
         cat_anc = list_cat[k % len(list_cat)]
         sub = df_osm[df_osm["category"] == cat_anc]
         anchor = sub.sample(1, random_state=rng).iloc[0]
@@ -76,6 +81,11 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
         voisins = voisins[voisins["poi_id"] != anchor.poi_id]
         for d in list_direction:
             results = voisins[voisins["direction"] == d]
+            # Une question sans réponse est inévaluable : un secteur cardinal
+            # peut ne contenir aucun POI, et la publier revient à noter un
+            # modèle sur une question qui n'a pas de bonne réponse.
+            if results.empty:
+                continue
 
             dic_benchmark["query"].append(f"pois to the {d} of {anchor.poi_name}")
             dic_benchmark["anchor_index"].append(anchor.poi_id)
@@ -84,7 +94,7 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
             dic_benchmark["anchor_x"].append(anchor.x)
             dic_benchmark["anchor_y"].append(anchor.y)
             dic_benchmark["direction"].append(d)
-            dic_benchmark["function"].append("cardinal_azimuth_sql")
+            dic_benchmark["function"].append("pack_by_direction")
             dic_benchmark["results_poi_id"].append(list(results.poi_id))
             dic_benchmark["results_poi_name"].append(list(results.poi_name))
             dic_benchmark["results_poi_dist"].append(list(results.dist))

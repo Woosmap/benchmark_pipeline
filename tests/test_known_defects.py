@@ -62,16 +62,15 @@ def incoherent(template_name):
 # de cette section vérifient donc `<= nb_q`, et les deux qui constataient une
 # sous-production ont été retirés : ils affirmaient un contrat qui n'existe pas.
 
-@defect("quota_multiplie_par_la_boucle_interne")
 @pytest.mark.parametrize("nb_q", [10, 14])
 def test_point_near_metric_honours_nb_q(df_osm, nb_q):
-    """`nb_q` doit piloter le nombre de questions, pas le nombre d'ancres.
+    """`nb_q` pilote le nombre de questions, pas le nombre d'ancres.
 
-    La boucle tire `nb_q` ancres puis décline chacune sur les quatre rayons de
-    `list_distance`, sans diviser le quota : mesuré 40 questions pour nb_q=10 et
-    56 pour nb_q=14, soit exactement 4×. La faute existait avant f1be9c1 sous
-    une autre forme — le quota était divisé par la *somme* au lieu du produit —
-    et le refactor l'a réintroduite en supprimant la division.
+    La boucle tirait `nb_q` ancres puis déclinait chacune sur les quatre rayons
+    de `list_distance` sans diviser le quota : 40 questions pour nb_q=10, 56
+    pour nb_q=14, soit exactement 4×. La faute existait avant f1be9c1 sous une
+    autre forme — le quota était divisé par la *somme* au lieu du produit — et
+    le refactor l'avait réintroduite en supprimant la division.
     """
     from benchmark_pipeline.generator.template_question.geospatial.point_near_metric import (
         make_question_point_near_metric,
@@ -84,15 +83,14 @@ def test_point_near_metric_honours_nb_q(df_osm, nb_q):
     )
 
 
-@defect("quota_multiplie_par_la_boucle_interne")
 @pytest.mark.parametrize("nb_q", [10, 14])
 def test_point_near_cardinal_honours_nb_q(df_osm, nb_q):
     """Même faute de quota, avec les quatre secteurs cardinaux.
 
-    Mesuré 40 questions pour nb_q=10 et 56 pour nb_q=14. Le facteur est
-    constant, donc tronquer après coup rééquilibrerait le volume — mais pas la
-    répartition : les quatre secteurs d'une même ancre sont consécutifs, et
-    couper dans le tas amputerait les dernières ancres de leurs directions.
+    40 questions pour nb_q=10, 56 pour nb_q=14. Le quota se divise en amont
+    plutôt que de tronquer après coup : les quatre secteurs d'une même ancre
+    sont consécutifs, et couper dans le tas amputerait les dernières ancres de
+    leurs directions.
     """
     from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
         make_question_point_near_cardinal,
@@ -105,16 +103,15 @@ def test_point_near_cardinal_honours_nb_q(df_osm, nb_q):
     )
 
 
-@defect("quota_multiplie_par_la_boucle_interne")
 @pytest.mark.parametrize("nb_q", [10, 14])
 def test_area_direction_honours_nb_q(df_osm, df_area, nb_q):
     """Idem pour `area_direction` : `nb_q` zones × 4 directions.
 
-    Mesuré 40 pour nb_q=10 et 56 pour nb_q=14. C'est une amélioration par
-    rapport à l'état d'avant f1be9c1, où la condition d'arrêt `while nq !=
-    n_queries_per_stratum` était inatteignable et le volume partait dans tous
-    les sens (802 questions pour nb_q=10, 135 pour nb_q=40) : il est désormais
-    faux mais prévisible, cf. `test_area_direction_volume_grows_with_nb_q`.
+    40 pour nb_q=10, 56 pour nb_q=14. Avant f1be9c1 la condition d'arrêt
+    `while nq != n_queries_per_stratum` était inatteignable et le volume partait
+    dans tous les sens (802 questions pour nb_q=10, 135 pour nb_q=40) ; il est
+    passé par un stade faux mais prévisible avant d'être plafonné,
+    cf. `test_area_direction_volume_grows_with_nb_q`.
     """
     from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
         make_question_area_direction,
@@ -199,7 +196,6 @@ def test_point_between_has_no_empty_answers_at_full_size(df_osm):
 # tirage des zones : borné par nb_q au lieu du corpus
 # --------------------------------------------------------------------------- #
 
-@defect("area_echantillonnage_borne")
 @pytest.mark.parametrize("template", ["area_inside", "area_direction"])
 def test_area_templates_survive_a_small_area_corpus(df_osm, df_area, template):
     """Moins de zones que de questions demandées ne doit pas faire lever.
@@ -220,7 +216,6 @@ def test_area_templates_survive_a_small_area_corpus(df_osm, df_area, template):
     assert not bench.empty
 
 
-@defect("area_echantillonnage_borne")
 def test_area_inside_can_draw_every_area(df_osm, df_area):
     """Toute zone du corpus doit être tirable, pas seulement les `nb_q` premières.
 
@@ -279,7 +274,6 @@ def test_point_near_metric_publishes_only_its_own_radius(df_osm):
     )
 
 
-@incoherent("area_border")
 def test_border_area_filters_by_the_requested_category(df_osm, df_area):
     """`pois_near_border` doit rendre la catégorie que l'énoncé demande.
 
@@ -312,7 +306,6 @@ def test_border_area_filters_by_the_requested_category(df_osm, df_area):
 # classement dégénéré : le rang n'ordonne rien
 # --------------------------------------------------------------------------- #
 
-@defect("area_direction_rang_sans_classement")
 def test_area_direction_rank_is_a_ranking(df_osm, df_area):
     """Le rang publié doit refléter un classement, pas l'ordre du corpus.
 
@@ -350,13 +343,18 @@ def test_border_area_separates_interior_from_boundary(df_osm, df_area):
     `area.boundary` depuis f1be9c1 — mesuré sur le Parc Carre : 24 POIs
     intérieurs, 20 distances distinctes entre 43,2 et 151,6 m. Ce test garde la
     correction.
+
+    Une catégorie doit être passée : `pois_near_border` l'exige depuis qu'on lui
+    a confié le filtrage, l'oubli étant précisément ce qui faisait répondre cinq
+    catégories à une question qui en demandait une. Le `skip` ci-dessous couvre
+    le cas où la strate retenue serait trop petite pour comparer.
     """
     from benchmark_pipeline.generator.template_question.geospatial.area_border import (
         pois_near_border,
     )
 
     area = df_area.geometry.iloc[0]
-    results = pois_near_border(df_osm, area, band=200)
+    results = pois_near_border(df_osm, area, band=200, category="cafe")
     inside = results[results.geometry.within(area)]
     if len(inside) < 2:
         pytest.skip("pas assez de POIs intérieurs pour comparer")
@@ -408,22 +406,28 @@ def test_segregate_pois_rejects_unknown_directions(df_osm, df_area, bogus):
 
 @pytest.mark.parametrize("nb_q", [1, 3, 20])
 def test_point_near_cardinal_accepts_any_nb_q(df_osm, nb_q):
-    """Aucun plancher arbitraire sur `nb_q`.
+    """Aucun plancher arbitraire sur `nb_q` : le générateur ne doit jamais lever.
 
     Le module refusait `nb_q <= 20` en annonçant « nb_q doit être ≥ 20 » : il
     rejetait la valeur que son propre message donnait pour valide, et la suite
-    devait le lancer à 21 via une table d'exceptions dans `conftest`. Le
-    garde-fou a disparu avec la réécriture du tirage, qui n'a plus de division
-    entière à protéger.
+    devait le lancer à 21 via une table d'exceptions dans `conftest`.
+
+    Ce test exigeait `len(bench) == 4 * nb_q`, c'est-à-dire exactement le défaut
+    de quota : chaque ancre étant déclinée sur quatre directions, le template
+    rendait quatre fois ce qu'on lui demandait. `nb_q` étant un plafond, il tire
+    maintenant `nb_q // 4` ancres — donc **zéro** sous `nb_q=4`, faute de pouvoir
+    construire une ancre complète dans le budget — et moins encore depuis que
+    les secteurs vides sont sautés, une question sans réponse étant
+    inévaluable. Rendre moins est permis ; lever ne l'est pas, et c'est cela
+    qu'on vérifie ici.
     """
     from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
         make_question_point_near_cardinal,
     )
 
     bench = make_question_point_near_cardinal(df_osm, nb_q=nb_q, seed=42)
-    assert len(bench) == 4 * nb_q, (
-        f"nb_q={nb_q} : {len(bench)} questions, attendu 4 × {nb_q} "
-        f"(une par direction)"
+    assert len(bench) <= nb_q, (
+        f"nb_q={nb_q} est un plafond, {len(bench)} questions produites"
     )
 
 
@@ -431,7 +435,6 @@ def test_point_near_cardinal_accepts_any_nb_q(df_osm, nb_q):
 # géométries écartées par erreur
 # --------------------------------------------------------------------------- #
 
-@defect("street_opposite_side_multilinestring_ignoree")
 def test_opposite_side_handles_multilinestring_streets(df_osm):
     """Une rue en plusieurs tronçons doit rester tirable.
 
@@ -471,7 +474,6 @@ def test_opposite_side_handles_multilinestring_streets(df_osm):
 # croisements qui n'en sont pas
 # --------------------------------------------------------------------------- #
 
-@defect("street_cross_intersection_vide")
 def test_touching_streets_only_returns_real_crossings():
     """`touching_streets` ne doit pas retenir deux rues qui ne se croisent pas.
 
@@ -504,7 +506,6 @@ def test_touching_streets_only_returns_real_crossings():
         )
 
 
-@defect("street_identity_incoherente")
 def test_street_modules_agree_on_street_identity(df_osm, df_streets):
     """Les deux modules « rue » doivent identifier une rue de la même façon.
 

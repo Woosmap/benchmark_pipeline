@@ -55,7 +55,12 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    for k in range(nb_q):
+    # `nb_q` est un plafond sur les *questions*, pas sur les ancres : chacune
+    # est déclinée sur chaque rayon de `list_distance`, donc le quota se divise d'abord. Sans cette
+    # division le template rendait 4 × nb_q. Diviser plutôt que tronquer après
+    # coup garde chaque ancre complet — couper dans le tas amputerait
+    # les dernières de leurs rayons.
+    for k in range(nb_q // len(list_distance)):
         cat_anc = list_cat[k % len(list_cat)]
         sub = df_osm[df_osm["category"] == cat_anc]
         anchor = sub.sample(1, random_state=rng).iloc[0]
@@ -63,6 +68,13 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
         results = results[results["poi_id"] != anchor.poi_id]
         for d in list_distance:
             result = results[results["distance"] == d]
+            # Une question sans réponse est inévaluable : un rayon de 100 m
+            # autour d'une ancre isolée
+            # ne trouve parfois rien, et la publier revient à noter un
+            # modèle sur une question qui n'a pas de bonne réponse.
+            if result.empty:
+                continue
+
             dic_benchmark["query"].append(f"pois at less than {d} meters from {anchor.poi_name}")
             dic_benchmark["anchor_index"].append(anchor.poi_id)
             dic_benchmark["anchor_name"].append(anchor.poi_name)

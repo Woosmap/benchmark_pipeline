@@ -25,7 +25,7 @@ from benchmark_pipeline.generator.template_question.schema import (
     _as_list,
 )
 from tests.conftest import angular_gap_deg, azimuth_deg
-from tests.known_defects import BROKEN_TEMPLATES, SEMANTIC_DEFECTS, merge_reasons
+from tests.known_defects import BROKEN_TEMPLATES, merge_reasons
 
 #: Le `k` par défaut des générateurs. Au-delà, la réponse est tronquée et un
 #: contrôle de complétude n'a plus de sens.
@@ -304,8 +304,7 @@ def test_area_inside_returns_exactly_the_pois_within(run_template, df_osm):
             )
 
 
-@oracle_for("area_inside", BROKEN_TEMPLATES,
-            {"area_inside": SEMANTIC_DEFECTS["area_inside_dist_toujours_nulle"]})
+@oracle_for("area_inside", BROKEN_TEMPLATES)
 def test_area_inside_ranking_is_meaningful(run_template):
     """Le classement « dans la zone » doit discriminer les POIs.
 

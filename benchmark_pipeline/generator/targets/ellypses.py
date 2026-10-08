@@ -71,7 +71,7 @@ def get_ellypse(row):
         rayon = float(row["distance"])
         return (0.0, 0.0, rayon, rayon, 0.0)
 
-    if fonction == "cardinal_azimuth_sql":
+    if fonction == "pack_by_direction":
         dx, dy, inclinaison = {"north": (0.0, 500.0, 90.0),
                                "south": (0.0, -500.0, 90.0),
                                "east": (500.0, 0.0, 0.0),
@@ -116,11 +116,11 @@ def get_ellypse(row):
         return (signe * 40.0 * math.cos(normale), signe * 40.0 * math.sin(normale),
                 80.0, 40.0, azimut)
 
-    if fonction == "inside_area":
+    if fonction == "pois_inside_area":
         demi_largeur, demi_hauteur = demi_emprise(row["area_geometry"])
         return (0.0, 0.0, demi_largeur, demi_hauteur, 0.0)
 
-    if fonction == "direction_area":
+    if fonction == "segregate_pois":
         demi_largeur, demi_hauteur = demi_emprise(row["area_geometry"])
         dx, dy, demi_u, demi_v = {
             "north": (0.0, demi_hauteur / 2, demi_largeur, demi_hauteur / 2),
@@ -130,9 +130,9 @@ def get_ellypse(row):
         }[row["direction"]]
         return (dx, dy, demi_u, demi_v, 0.0)
 
-    if fonction in ("border_area", "outside_area"):
+    if fonction in ("pois_near_border", "outside_area"):
         demi_largeur, demi_hauteur = demi_emprise(row["area_geometry"])
-        marge = 1.2 if fonction == "border_area" else 2.0
+        marge = 1.2 if fonction == "pois_near_border" else 2.0
         return (0.0, 0.0, demi_largeur * marge, demi_hauteur * marge, 0.0)
 
     raise ValueError(f"Type de question inconnu : {fonction}")

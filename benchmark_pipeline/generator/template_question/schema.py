@@ -12,10 +12,9 @@ deux choses :
   `results_poi_name`, `results_poi_dist`, `results_poi_rank`, ordonnées par
   pertinence décroissante.
 
-Ce module est la source de vérité unique sur ce schéma : il alimente à la fois la
-paramétrisation des tests (`tests/`) et l'écriture sur disque
-(`src.utils.dataset_io`), pour qu'il n'y ait pas deux listes de colonnes à
-maintenir en parallèle.
+Ce module est la source de vérité unique sur ce schéma : il alimente la
+paramétrisation des tests (`tests/`), pour qu'il n'y ait pas deux listes de
+colonnes à maintenir en parallèle.
 """
 
 from __future__ import annotations
@@ -51,8 +50,9 @@ RESULT_LIST_COLUMNS = (
 
 REQUIRED_RESULT_COLUMNS = ("results_poi_id", "results_poi_name")
 
-#: Colonnes contenant des géométries shapely. Elles ne survivent pas à un
-#: aller-retour parquet sans passer par du WKB, cf. `src.utils.dataset_io`.
+#: Colonnes contenant des géométries shapely. Elles ne survivent pas telles
+#: quelles à un aller-retour parquet : tout code qui enregistre un benchmark
+#: doit les encoder en WKB au passage.
 GEOMETRY_COLUMNS = (
     "area_geometry",
     "street_geometry",
@@ -63,7 +63,8 @@ GEOMETRY_COLUMNS = (
 
 #: Colonnes qui désignent un POI servant d'ancre à la question. Une ancre ne
 #: doit jamais figurer dans sa propre réponse.
-ANCHOR_ID_COLUMNS = ("anchor_index", "point_b_index", "poi_y_id")
+ANCHOR_ID_COLUMNS = ("anchor_index", "anchor_a_index", "anchor_b_index",
+                     "poi_y_id")
 
 
 # --------------------------------------------------------------------------- #
@@ -110,8 +111,14 @@ _PKG = f"{__package__}.geospatial"
 # questions de point ont cessé de filtrer par catégorie.
 _ANCHOR_COLS = ("anchor_index", "anchor_name", "anchor_category",
                 "anchor_x", "anchor_y")
-_POINT_B_COLS = ("point_b_index", "point_b_name", "point_b_category",
-                 "point_b_x", "point_b_y")
+# `point_towards` a une ancre et un second point, `point_between` deux ancres
+# symétriques. Les deux nomment le second point `anchor_b_*` ; le registre a
+# longtemps annoncé `point_b_*`, vocabulaire qu'aucun générateur n'a jamais
+# produit.
+_ANCHOR_A_COLS = ("anchor_a_index", "anchor_a_name", "anchor_a_category",
+                  "anchor_a_x", "anchor_a_y")
+_ANCHOR_B_COLS = ("anchor_b_index", "anchor_b_name", "anchor_b_category",
+                  "anchor_b_x", "anchor_b_y")
 _AREA_COLS = ("area_index", "area_name", "area_geometry")
 
 #: Les 12 templates de type A. L'ordre est celui de la progression logique :
@@ -133,11 +140,12 @@ TEMPLATE_REGISTRY = (
     ),
     Template(
         "point_towards", f"{_PKG}.point_towards", "make_question_point_towards",
-        ("df_osm",), _ANCHOR_COLS + _POINT_B_COLS, label_column="anchor_name",
+        ("df_osm",), _ANCHOR_COLS + _ANCHOR_B_COLS, label_column="anchor_name",
     ),
     Template(
         "point_between", f"{_PKG}.point_between", "make_question_point_between",
-        ("df_osm",), _ANCHOR_COLS + _POINT_B_COLS, label_column="anchor_name",
+        ("df_osm",), _ANCHOR_A_COLS + _ANCHOR_B_COLS,
+        label_column="anchor_a_name",
     ),
     Template(
         "area_inside", f"{_PKG}.area_inside", "make_question_area_inside",

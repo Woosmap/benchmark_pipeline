@@ -41,7 +41,15 @@ def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     areas = df_area[df_area.geometry.area > min_size]
-    sample_areas = rng.choice(len(areas), size=nb_q, replace=False)
+    # `size` plafonné au corpus : `replace=False` exige une population au moins
+    # aussi grande que l'échantillon, sinon ValueError sur un corpus réduit.
+    # `nb_q` est un plafond sur les *questions*, pas sur les zones : chacune
+    # est déclinée sur chaque direction de `list_direction`, donc le quota se divise d'abord. Sans cette
+    # division le template rendait 4 × nb_q. Diviser plutôt que tronquer après
+    # coup garde chaque zone complet — couper dans le tas amputerait
+    # les dernières de leurs directions.
+    nb_zones = min(len(areas), nb_q // len(list_direction))
+    sample_areas = rng.choice(len(areas), size=nb_zones, replace=False)
     for id_a in sample_areas:
         area = areas.iloc[id_a]
         pois = df_osm[df_osm.geometry.within(area.geometry)]
@@ -49,18 +57,28 @@ def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=
             continue
         else:
             results = segregate_pois(pois, area.geometry, list_direction)
-            for direction, pois in results.items():
+            centre = area.geometry.centroid
+            # `segregate_pois` masque sans trier : le rang numérotait l'ordre
+            # d'apparition dans `df_osm`, c'est-à-dire rien. Le classement se
+            # fait ici, par distance croissante au centroïde — critère que les
+            # templates voisins emploient déjà, et seul ordre qui respecte la
+            # monotonie de `results_poi_dist` exigée par `validate_benchmark`.
+            for direction, pois_direction in results.items():
+                pois_direction = pois_direction.assign(
+                    dist=pois_direction.geometry.distance(centre)
+                ).sort_values("dist")
                 dic_benchmark["query"].append(f"pois at the {direction} of {area['area_name']}")
                 dic_benchmark["area_index"].append(area.name)
                 dic_benchmark["area_name"].append(area["area_name"])
                 dic_benchmark["area_geometry"].append(area.geometry)
-                dic_benchmark["function"].append("direction_area")
+                dic_benchmark["function"].append("segregate_pois")
                 dic_benchmark["direction"].append(direction)
-                dic_benchmark["results_poi_id"].append(list(pois.poi_id))
-                dic_benchmark["results_poi_x"].append(list(pois.geometry.x))
-                dic_benchmark["results_poi_y"].append(list(pois.geometry.y))
-                dic_benchmark["results_poi_name"].append(list(pois.poi_name))
-                dic_benchmark["results_poi_rank"].append(list(range(1, len(pois) + 1)))
+                dic_benchmark["results_poi_id"].append(list(pois_direction.poi_id))
+                dic_benchmark["results_poi_x"].append(list(pois_direction.geometry.x))
+                dic_benchmark["results_poi_y"].append(list(pois_direction.geometry.y))
+                dic_benchmark["results_poi_name"].append(list(pois_direction.poi_name))
+                dic_benchmark["results_poi_dist"].append(list(pois_direction["dist"]))
+                dic_benchmark["results_poi_rank"].append(list(range(1, len(pois_direction) + 1)))
 
 
     return pd.DataFrame(dic_benchmark)

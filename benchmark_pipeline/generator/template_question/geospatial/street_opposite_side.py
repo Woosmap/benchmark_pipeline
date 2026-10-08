@@ -124,7 +124,10 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
     list_cat = df_osm["category"].unique()
     n_queries_per_stratum = nb_q // len(list_cat)
 
-    lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiString"])]
+    # "MultiLineString", pas "MultiString" : la coquille écartait silencieusement
+    # toutes les rues en plusieurs tronçons, que `side_of_street` sait pourtant
+    # traiter. Aucun filtre ne levait, le tirage était simplement amputé.
+    lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiLineString"])]
 
     for cat_q in list_cat:
         n = 0

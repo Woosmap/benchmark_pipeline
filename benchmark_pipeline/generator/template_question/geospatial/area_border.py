@@ -7,10 +7,28 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def pois_near_border(df_osm, area, band):
+def pois_near_border(df_osm, area, band, category, cat_col="category"):
+    """POIs d'une catégorie situés à moins de `band` mètres du bord d'une zone.
+
+    Args:
+        df_osm (GeoDataFrame): POIs en EPSG:2154.
+        area (BaseGeometry): Géométrie de la zone.
+        band (float): Largeur de la bande, en mètres.
+        category (str): Catégorie de POI recherchée.
+        cat_col (str): Colonne portant la catégorie.
+
+    Returns:
+        GeoDataFrame: Les POIs retenus, colonne `dist` ajoutée, triés par
+            distance croissante au bord.
+    """
     border = area.boundary
     idx = df_osm.sindex.query(border, predicate="dwithin", distance=band)
+    # Le filtre par catégorie vient après la requête spatiale, pas avant :
+    # `sindex` est bâti sur `df_osm` entier, donc `iloc[idx]` doit s'appliquer
+    # au même cadre. Sans ce filtre, l'énoncé annonçait une catégorie et la
+    # vérité terrain en livrait cinq.
     pois = df_osm.iloc[idx]
+    pois = pois[pois[cat_col] == category]
     return pois.assign(dist=pois.geometry.distance(border)).sort_values("dist")
 
 @template("make_question_area_border")
@@ -43,7 +61,7 @@ def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=11
         while nq != n_queries_per_stratum and i<200:
             i+=1
             area = areas.loc[rng.choice(areas.index)]
-            results = pois_near_border(df_osm, area.geometry, band)
+            results = pois_near_border(df_osm, area.geometry, band, cat_q)
             if results.empty:
                 continue
             nq +=1
@@ -53,7 +71,7 @@ def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=11
             dic_benchmark["area_index"].append(area.name)
             dic_benchmark["area_name"].append(area["area_name"])
             dic_benchmark["area_geometry"].append(area.geometry)
-            dic_benchmark["function"].append("border_area")
+            dic_benchmark["function"].append("pois_near_border")
             dic_benchmark["results_poi_id"].append(list(results.poi_id))
             dic_benchmark["results_poi_name"].append(list(results.poi_name))
             dic_benchmark["results_poi_dist"].append(list(results["dist"]))
