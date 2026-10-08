@@ -1,13 +1,13 @@
-from scipy.spatial import cKDTree
-from scipy.spatial import cKDTree
-import numpy as np
 from collections import defaultdict
+
 import duckdb
+import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
 from benchmark_pipeline.generator.template_question.ratio import allocate
+from benchmark_pipeline.generator.template_question.registry import template
 
 
 def between_ab_sql(df, ax, ay, bx, by, cat, k=100,

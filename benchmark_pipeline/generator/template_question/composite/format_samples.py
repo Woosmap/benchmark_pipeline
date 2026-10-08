@@ -3,11 +3,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, TypedDict
 
-import numpy as np
 from numpy.random import Generator
 from numpy.typing import NDArray
 from pandas import DataFrame, Series
-
 
 PoiId = int | tuple
 

@@ -10,8 +10,6 @@ import json
 
 import pandas as pd
 import pytest
-
-from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
 from benchmark_pipeline.utils.dataset_io import (
     FORMAT_VERSION,
     load_benchmark,
@@ -19,6 +17,8 @@ from benchmark_pipeline.utils.dataset_io import (
     save_benchmark,
     save_benchmark_suite,
 )
+
+from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
 
 gpd = pytest.importorskip("geopandas")
 from shapely.geometry import LineString, Point, box

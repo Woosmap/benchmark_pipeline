@@ -1,11 +1,10 @@
-import numpy as np
 from collections import defaultdict
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
-from benchmark_pipeline.generator.template_question.ratio import allocate
-
 
 CARDINAL_AZ = {
     "north": 0, "east": 90,
@@ -42,8 +41,6 @@ def pack_by_direction(df, x, y, k=100):
         "poi_name": df["poi_name"].to_numpy(),
         "dist": np.hypot(dx, dy),
         "az": az,
-        # Le décalage de 45° aligne chaque secteur sur une tranche de 90° entière :
-        # le nord couvre [315°, 45°[ et retombe donc sur l'indice 0.
         "direction": SECTEURS[(((az + 45) % 360) // 90).astype(int)],
     })
     return (resultats.sort_values("dist")
@@ -52,7 +49,7 @@ def pack_by_direction(df, x, y, k=100):
 
 
 @template("make_question_point_near_cardinal")
-def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=["north", "east", "west", "south"], nb_q=110, seed=42):
+def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, nb_q=110, seed=42):
     """Génère les questions de direction cardinale « X au nord de Y ».
 
     Args:
@@ -66,6 +63,8 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=["north
         DataFrame: Une ligne par (ancre, direction). Mêmes colonnes que
             `make_question_nearsql`, plus `direction`.
     """
+    if list_direction is None:
+        list_direction = ["north", "east", "west", "south"]
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
@@ -73,8 +72,6 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=["north
         cat_anc = list_cat[k % len(list_cat)]
         sub = df_osm[df_osm["category"] == cat_anc]
         anchor = sub.sample(1, random_state=rng).iloc[0]
-        # Un seul balayage du corpus par ancre : les quatre secteurs en sortent
-        # ensemble, et l'ancre n'est retirée qu'une fois.
         voisins = pack_by_direction(df_osm, anchor.x, anchor.y)
         voisins = voisins[voisins["poi_id"] != anchor.poi_id]
         for d in list_direction:

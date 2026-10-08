@@ -1,7 +1,8 @@
-from pandas import DataFrame
-import numpy as np
-from dataclasses import dataclass, asdict
 import json
+from dataclasses import asdict, dataclass
+
+import numpy as np
+from pandas import DataFrame
 
 
 @dataclass

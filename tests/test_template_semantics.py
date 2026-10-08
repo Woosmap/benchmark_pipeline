@@ -6,10 +6,11 @@ shapely purs, sans repasser par DuckDB ni par les helpers du template. Comparer
 les deux attrape ce qu'aucun contrôle de forme ne voit — une requête SQL bien
 formée qui ne calcule pas la relation annoncée par l'énoncé.
 
-Huit des douze templates ne filtrent plus par catégorie depuis f1be9c1 : leur
-énoncé demande « pois », et l'oracle porte donc sur tout le corpus. Les quatre
-autres — `area_outside`, `area_border`, `street_cross`, `street_opposite_side` —
-gardent une catégorie, cf. `conftest.CATEGORY_FREE_TEMPLATES`.
+Neuf des douze templates ne filtrent plus par catégorie : leur énoncé demande
+« pois », et l'oracle porte donc sur tout le corpus. Huit le font depuis f1be9c1,
+`street_cross` les a rejoints en 0262979. Les trois autres — `area_outside`,
+`area_border`, `street_opposite_side` — gardent une catégorie, cf.
+`conftest.CATEGORY_FREE_TEMPLATES`.
 
 Les templates aujourd'hui cassés portent un `xfail(strict=True)` : l'oracle est
 écrit quand même, et se mettra à vérifier pour de bon dès que le générateur

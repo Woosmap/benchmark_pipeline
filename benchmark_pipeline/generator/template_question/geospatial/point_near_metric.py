@@ -1,7 +1,6 @@
-import numpy as np
-
-from benchmark_pipeline.generator.template_question.ratio import allocate
 from collections import defaultdict
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
@@ -37,7 +36,7 @@ def near_metric_sql(df, x, y, list_distance, k=100):
     })
 
 @template("make_question_point_near_metric")
-def make_question_point_near_metric(df_osm, ratio=None, list_distance=[100, 300, 500, 1000], nb_q=110, seed=42):
+def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q=110, seed=42):
     """Génère les questions à contrainte métrique « X à moins de D mètres de Y ».
 
     Args:
@@ -51,6 +50,8 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=[100, 300,
             `make_question_nearsql`, plus `distance`.
 
     """
+    if list_distance is None:
+        list_distance = [100, 300, 500, 1000]
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()

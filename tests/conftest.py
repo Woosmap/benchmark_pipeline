@@ -251,22 +251,18 @@ def run_template(df_osm, df_area, df_streets, nb_q):
 # familles de templates
 # --------------------------------------------------------------------------- #
 
-#: Libellé injecté comme `category_query` pour les templates sans catégorie.
-#: C'est le mot que leur énoncé emploie déjà (« pois near X »), donc la règle
-#: « l'énoncé mentionne la catégorie cherchée » de `validate_benchmark` passe
-#: sans être relâchée.
-CATEGORY_FREE_LABEL = "pois"
-
 #: Templates dont l'énoncé ne porte **aucune** catégorie : ils demandent tous
 #: les POIs d'une relation spatiale, et leur réponse mélange donc les catégories
 #: par construction.
 #:
-#: Ce n'est pas un défaut mais la forme qu'ont prise ces huit générateurs. Le
-#: schéma, lui, suppose encore une catégorie partout — d'où le défaut
-#: `category_query_absente` de `known_defects.py`, qui porte sur ce décalage.
-#: Sans cette table, `validate_benchmark` s'arrête sur la colonne manquante et
-#: ne vérifie plus rien d'autre : les listes dupliquées de `point_near_metric`
-#: passaient inaperçues.
+#: Ce n'est pas un défaut mais la forme qu'ont prise ces neuf générateurs, et le
+#: schéma le reconnaît désormais : `category_query` a quitté
+#: `BENCHMARK_CORE_COLUMNS` pour `OPTIONAL_CONTEXT_COLUMNS`, et
+#: `validate_benchmark` saute ses deux règles de catégorie quand la colonne est
+#: absente. Cette table ne sert donc plus à relâcher le validateur mais à
+#: vérifier l'inverse — `test_category_free_templates_say_so_in_their_query`
+#: s'assure que les neuf disent bien « pois » dans leur énoncé, et que les trois
+#: autres publient bien la colonne.
 CATEGORY_FREE_TEMPLATES = frozenset({
     "point_near",
     "point_near_metric",
@@ -276,11 +272,12 @@ CATEGORY_FREE_TEMPLATES = frozenset({
     "area_inside",
     "area_direction",
     "street_along",
+    "street_cross",
 })
 
 
 def coherence_problems(bench, template, df_osm):
-    """Incohérences d'un benchmark, lues selon la famille de son template.
+    """Incohérences d'un benchmark, quelle que soit la famille de son template.
 
     Args:
         bench (DataFrame): Le benchmark à vérifier.
@@ -292,18 +289,13 @@ def coherence_problems(bench, template, df_osm):
     """
     from benchmark_pipeline.generator.template_question.schema import validate_benchmark
 
-    if template.name not in CATEGORY_FREE_TEMPLATES:
-        return validate_benchmark(bench, df_osm,
-                                  dist_is_ranking_key=template.dist_is_ranking_key,
-                                  allow_empty=True)
-
-    problems = validate_benchmark(
-        bench.assign(category_query=CATEGORY_FREE_LABEL), df_osm,
-        dist_is_ranking_key=template.dist_is_ranking_key, allow_empty=True,
-    )
-    # Seul contrôle que la famille ne peut pas satisfaire : ses réponses sont
-    # multi-catégories voulues. Les onze autres règles restent appliquées.
-    return [p for p in problems if "hors catégorie" not in p]
+    # Cette fonction injectait un faux `category_query` aux templates sans
+    # catégorie, puis filtrait les plaintes « hors catégorie » qu'elle venait de
+    # provoquer. `validate_benchmark` saute maintenant ses deux règles de
+    # catégorie quand la colonne est absente, donc l'appel est direct.
+    return validate_benchmark(bench, df_osm,
+                              dist_is_ranking_key=template.dist_is_ranking_key,
+                              allow_empty=True)
 
 
 # --------------------------------------------------------------------------- #

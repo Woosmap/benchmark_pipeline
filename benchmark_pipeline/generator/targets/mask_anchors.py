@@ -1,9 +1,6 @@
-from sklearn.linear_model import LogisticRegression
-from sklearn.model_selection import train_test_split
-from random import Random
 import re
-import pandas as pd
 
+import pandas as pd
 
 ANCHOR_COL = re.compile(r"(anchor|area|street)(_[ab])?_name")
 

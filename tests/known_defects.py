@@ -124,42 +124,26 @@ INCOMPLETE_RESULT_LISTS = {
 #: `test_declared_columns_present` et `test_query_mentions_its_context` lisent
 #: cette table.
 #:
-#: Les trois causes se cumulent, d'où des motifs composés :
+#: Deux causes y figuraient, toutes deux réglées côté schéma plutôt
+#: qu'ici : neuf templates ne publiaient plus `category_query`, que
+#: `BENCHMARK_CORE_COLUMNS` exigeait partout, et plus aucun ne produisait
+#: `same_cat`, qu'annonçait `_ANCHOR_COLS`. C'était bien le registre qui était
+#: périmé : les deux colonnes ont été retirées du schéma, `category_query`
+#: devenant facultative (`OPTIONAL_CONTEXT_COLUMNS`) pour les trois templates
+#: qui filtrent encore par catégorie. Les sept entrées que ces deux causes
+#: justifiaient ont disparu avec elles.
 #:
-#: 1. `category_query` — huit templates demandent désormais « pois », sans
-#:    catégorie, et ne publient plus la colonne. `BENCHMARK_CORE_COLUMNS`
-#:    (schema.py:30) l'exige toujours partout. Cf. `conftest.CATEGORY_FREE_TEMPLATES` ;
-#: 2. `same_cat` — `_ANCHOR_COLS` (schema.py:99) l'annonce, plus aucun template
-#:    ne la produit ;
-#: 3. le vocabulaire du second point — `point_towards` publie `anchor_b_*` et
-#:    `point_between` `anchor_a_*`/`anchor_b_*`, quand le registre annonce
-#:    `point_b_*`.
-_CATEGORY_QUERY_ABSENTE = (
-    "l'énoncé ne porte plus de catégorie (« pois near X ») et le générateur ne "
-    "publie plus `category_query`, que `BENCHMARK_CORE_COLUMNS` (schema.py:30) "
-    "exige toujours. Huit des douze templates sont dans ce cas : c'est le "
-    "registre qui est périmé, pas le générateur"
-)
-
-_SAME_CAT_ABSENTE = (
-    "`same_cat`, annoncée par `_ANCHOR_COLS` (schema.py:99-100), n'est plus "
-    "produite par aucun template depuis que les questions de point ne filtrent "
-    "plus par catégorie"
-)
-
+#: Ne reste que la troisième : le vocabulaire du second point — `point_towards`
+#: publie `anchor_b_*` et `point_between` `anchor_a_*`/`anchor_b_*`, quand le
+#: registre annonce `point_b_*`.
 MISDECLARED_CONTEXT_COLUMNS = {
-    "point_near": f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE}",
-    "point_near_metric": f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE}",
-    "point_near_cardinal": f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE}",
     "point_towards": (
-        f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE} ; et "
         "point_towards.py:109-113 publie `anchor_b_index`, `anchor_b_name`, "
         "`anchor_b_category`, `anchor_b_x`, `anchor_b_y` là où le registre "
         "annonce `_POINT_B_COLS` (`point_b_*`) : les cinq colonnes déclarées "
         "sont absentes du DataFrame"
     ),
     "point_between": (
-        f"{_CATEGORY_QUERY_ABSENTE} ; et {_SAME_CAT_ABSENTE} ; et "
         "schema.py:126-129 déclare `point_between` avec `_ANCHOR_COLS + "
         "_POINT_B_COLS` (`anchor_index`, `anchor_name`…, `point_b_index`…), "
         "mais point_between.py:156-165 publie `anchor_a_*` et `anchor_b_*` : "
@@ -170,16 +154,13 @@ MISDECLARED_CONTEXT_COLUMNS = {
         "aucune colonne, donc `test_query_mentions_its_context` lève KeyError "
         "au lieu de comparer l'énoncé à son libellé"
     ),
-    "area_inside": _CATEGORY_QUERY_ABSENTE,
-    "area_direction": _CATEGORY_QUERY_ABSENTE,
-    "street_along": _CATEGORY_QUERY_ABSENTE,
 }
 
 #: Templates dont la colonne désignée par `label_column` est absente.
-#: **Sous-ensemble strict de `MISDECLARED_CONTEXT_COLUMNS`** : les sept autres
-#: mal déclarés publient bien leur libellé (`anchor_name`, `area_name`,
-#: `street_name`), seules d'*autres* colonnes leur manquent. Eux seuls peuvent
-#: faire lever `test_query_mentions_its_context`.
+#: **Sous-ensemble strict de `MISDECLARED_CONTEXT_COLUMNS`** : `point_towards`,
+#: l'autre mal déclaré, publie bien son libellé (`anchor_name`), seules
+#: d'*autres* colonnes lui manquent. `point_between` seul peut faire lever
+#: `test_query_mentions_its_context`.
 MISSING_LABEL_COLUMN = {
     "point_between": MISDECLARED_CONTEXT_COLUMNS["point_between"],
 }
@@ -232,33 +213,17 @@ UNPLOTTABLE_TEMPLATES = {}
 #: module et ne concerne pas les douze templates, mais les cibles ajoutées par
 #: f1be9c1.
 #:
-#: Ce ne sont pas de simples imports morts. scikit-learn ne figure pas dans les
-#: `dependencies` de `pyproject.toml` : il n'arrive que par l'extra `nlp`, dont
-#: `sentence-transformers` le tire transitivement (uv.lock:1916). Après un
-#: `uv sync` sans extras — l'installation que le README décrit — les deux
-#: modules lèvent donc `ModuleNotFoundError` et `get_ellypse` comme `make_mask`
-#: sont injoignables. Avec `--all-extras`, ce que fait la CI, ils s'importent :
-#: le défaut est donc invisible la moitié du temps, et c'est ce qui le rend
-#: coûteux à diagnostiquer.
-#:
-#: La correction est dans les deux fichiers, pas dans `pyproject.toml` : aucun
-#: des deux n'appelle `train_test_split`, `LogisticRegression` ni `Random`.
-#: Déclarer scikit-learn pour les satisfaire alourdirait l'installation pour du
-#: code qui ne s'en sert pas.
-DEAD_IMPORTS = {
-    "benchmark_pipeline.generator.targets.ellypses": (
-        "ellypses.py:2-3 importe `random.Random` et "
-        "`sklearn.model_selection.train_test_split` sans jamais les utiliser — "
-        "le module ne se sert que de `math`. Le second rend l'import du module "
-        "impossible sans l'extra `nlp`, donc `get_ellypse` injoignable"
-    ),
-    "benchmark_pipeline.generator.targets.mask_anchors": (
-        "mask_anchors.py:1-3 importe `sklearn.linear_model.LogisticRegression`, "
-        "`sklearn.model_selection.train_test_split` et `random.Random`, tous "
-        "trois inutilisés — le module ne se sert que de `re` et `pandas`. Même "
-        "conséquence : `make_mask` et `get_anchors` injoignables sans l'extra"
-    ),
-}
+#: Vide depuis le nettoyage des imports. `ellypses.py` et `mask_anchors.py`
+#: tiraient `sklearn` et `random.Random` sans jamais s'en servir ; comme
+#: scikit-learn n'est pas dans les `dependencies` mais seulement dans l'extra
+#: `nlp`, un `uv sync` sans extras — l'installation que décrit le README —
+#: rendait `get_ellypse` et `make_mask` injoignables. Avec `--all-extras`, ce
+#: que fait la CI, les deux modules s'importaient : le défaut était invisible
+#: une fois sur deux, d'où le contrôle statique par AST de
+#: `test_target_modules_import_only_what_they_use`, qui tombe pareil dans les
+#: deux installations. Garder la table vide plutôt que la supprimer : le test
+#: qui la lit reste en place et se repeuplera si la régression revient.
+DEAD_IMPORTS = {}
 
 #: Templates qui laissent passer des questions sans aucune réponse.
 UNANSWERABLE_TEMPLATES = {
@@ -290,9 +255,9 @@ SEMANTIC_DEFECTS = {
         "tirage sur leur seconde dimension — quatre rayons, quatre secteurs, "
         "quatre directions — sans jamais diviser le quota. Ils rendent donc "
         "exactement 4 × nb_q questions. Mesuré : 40 pour nb_q=10 et 56 pour "
-        "nb_q=14, pour les trois. Le facteur est constant et le volume "
-        "monotone, donc le défaut n'apparaît qu'en comparant à `nb_q` — mais "
-        "il déséquilibre le jeu final, où ces trois templates pèsent quatre "
+        "nb_q=14, pour les trois. `nb_q` étant un plafond, rendre moins "
+        "serait légitime ; le dépasser d'un facteur 4 ne l'est pas, et "
+        "déséquilibre le jeu final où ces trois templates pèsent quatre "
         "fois leur part"
     ),
     "area_echantillonnage_borne": (
@@ -324,23 +289,6 @@ SEMANTIC_DEFECTS = {
         "ordonnent différemment les mêmes bons POIs sont notés différemment "
         "sans raison. Trier par distance au centroïde, ou le long de l'axe de "
         "la direction demandée"
-    ),
-    "quota_arrondi_par_strate": (
-        "`area_outside`, `area_border` et `street_opposite_side` fixent leur "
-        "quota à `nb_q // len(list_cat)` par catégorie : la division entière "
-        "perd le reste, et `nb_q` n'est honoré que s'il est divisible par le "
-        "nombre de catégories. Mesuré sur 5 catégories : 10 questions pour "
-        "nb_q=10, mais 10 aussi pour nb_q=12 et nb_q=14. `ratio.allocate` "
-        "existe précisément pour ça — il répartit le reste sur les plus fortes "
-        "parties fractionnaires — et n'est utilisé que par `point_between`"
-    ),
-    "street_cross_sous_production": (
-        "street_cross.py — produit moins de questions que demandé là où les "
-        "autres templates atteignent leur quota : mesuré 7 pour nb_q=10. Le "
-        "tirage exige deux rues sécantes *et* des POIs près du croisement ; il "
-        "abandonne une strate au lieu de retirer une autre paire de rues. Sur "
-        "un corpus réel le déficit est moins visible, mais le jeu reste "
-        "déséquilibré entre templates"
     ),
     "street_cross_intersection_vide": (
         "street_cross.py:26 — `touching_streets(tol=1.0)` retient des rues qui "

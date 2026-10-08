@@ -1,10 +1,9 @@
-from scipy.spatial import cKDTree
-import numpy as np
-
-from benchmark_pipeline.generator.template_question.ratio import allocate
 from collections import defaultdict
+
 import duckdb
+import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 
 from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template

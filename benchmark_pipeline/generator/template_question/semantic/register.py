@@ -1,9 +1,13 @@
-from pandas import DataFrame
-import numpy as np
-from dataclasses import dataclass, asdict
 import json
+from dataclasses import asdict, dataclass
 
-from benchmark_pipeline.generator.template_question.semantic.batcher import make_benchmark_question
+import numpy as np
+from pandas import DataFrame
+
+from benchmark_pipeline.generator.template_question.semantic.batcher import (
+    make_benchmark_question,
+)
+
 
 @dataclass
 class BenchmarkConfig:

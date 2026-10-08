@@ -1,7 +1,4 @@
 import math
-from random import Random
-from sklearn.model_selection import train_test_split
-
 
 QUESTION_TYPE = ['NEAR', 'VERY_NEAR', 'CARDINAL_POINT']
 

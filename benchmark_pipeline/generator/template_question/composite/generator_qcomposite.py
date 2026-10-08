@@ -9,7 +9,6 @@ from benchmark_pipeline.generator.template_question import geospatial  # noqa: F
 from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import REGISTRY
 
-
 list_template = ['make_question_point_near']
 """
 ['make_question_area_border',

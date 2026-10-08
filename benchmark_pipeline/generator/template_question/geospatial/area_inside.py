@@ -1,6 +1,6 @@
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *

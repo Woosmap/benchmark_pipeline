@@ -12,14 +12,12 @@ permet aux features dérivées — « à moins de 200 m de la Seine » — d'exi
 côté des tags OSM bruts, et laisse `to_text` rendre `None` quand l'attribut
 n'est pas renseigné, ce qui écarte le POI au lieu de produire un énoncé bancal.
 """
-from pandas import DataFrame
-import numpy as np
+from collections import defaultdict
 from itertools import combinations
 
-from collections import defaultdict
+from pandas import DataFrame
+
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.ratio import allocate
-from benchmark_pipeline.generator.features import OutDoorSeating, InDoorSeating, CookingType, Category
 
 
 def generate_question(poi, n_features, nb_question, features=FEATURES):
@@ -65,7 +63,7 @@ def generate_question(poi, n_features, nb_question, features=FEATURES):
     for combo in combinations(available, n_features):
         combo = sorted(combo, key=lambda item: item[0])
         question.append([t for t, _, _ in combo])
-        features.append(dict((col, val) for _, col, val in combo))
+        features.append({col: val for _, col, val in combo})
         #out.append({
         #    "question":    [poi["category"]] + [t for t, _, _ in combo],
         #    "features": [(col, val) for _, col, val in combo],

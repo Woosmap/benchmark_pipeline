@@ -1,8 +1,6 @@
-from scipy.spatial import cKDTree
-from scipy.spatial import cKDTree
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
@@ -64,7 +62,6 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
-    list_cat = df_osm["category"].unique()
     for _ in range(nb_q):
         id_street_a = rng.choice(df_streets['id_street'])
         street_a = df_streets.loc[id_street_a]

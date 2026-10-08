@@ -1,14 +1,21 @@
 import geopandas as gpd
-from shapely.ops import linemerge
 import osmnx as ox
-from shapely.ops import unary_union
 import pandas as pd
+from shapely.ops import linemerge, unary_union
 
-from benchmark_pipeline.config import BBOX, AREA_TAGS, STREETS_TAGS, CATEGORIES, FEATURES
-from benchmark_pipeline.loader.osm_extractor import extract_osm_pois, get_category
-from benchmark_pipeline.loader.data_cleaning.cooking_column import classify_cuisine_column
-from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
+from benchmark_pipeline.config import (
+    AREA_TAGS,
+    BBOX,
+    CATEGORIES,
+    FEATURES,
+    STREETS_TAGS,
+)
+from benchmark_pipeline.loader.data_cleaning.cooking_column import (
+    classify_cuisine_column,
+)
 from benchmark_pipeline.loader.data_cleaning.serialize import serialize_poi
+from benchmark_pipeline.loader.osm_extractor import extract_osm_pois, get_category
+from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
 
 
 def load_streets():

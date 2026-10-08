@@ -3,10 +3,11 @@
 Un benchmark est un `DataFrame` « une ligne = une question ». Chaque ligne porte
 deux choses :
 
-* un **contexte**, qui décrit la question posée — la catégorie cherchée
-  (`category_query`), l'énoncé en langue naturelle (`query`), et selon le
-  template une ancre ponctuelle (`anchor_*`), une zone (`area_*`) ou une rue
-  (`street_*`) ;
+* un **contexte**, qui décrit la question posée — l'énoncé en langue
+  naturelle (`query`) et, selon le template, une ancre ponctuelle (`anchor_*`),
+  une zone (`area_*`) ou une rue (`street_*`). Trois templates ajoutent la
+  catégorie cherchée (`category_query`) ; les neuf autres demandent « pois »
+  sans filtrer, et ne la publient pas ;
 * une **vérité terrain**, sous forme de listes parallèles `results_poi_id`,
   `results_poi_name`, `results_poi_dist`, `results_poi_rank`, ordonnées par
   pertinence décroissante.
@@ -27,7 +28,16 @@ import pandas as pd
 # --------------------------------------------------------------------------- #
 
 #: Colonnes présentes dans tout benchmark, quel que soit le template.
-BENCHMARK_CORE_COLUMNS = ("query", "category_query", "function")
+#:
+#: `category_query` n'en fait plus partie : seuls `area_border`, `area_outside`
+#: et `street_opposite_side` filtrent encore par catégorie. Les neuf autres
+#: demandent « pois » et ne publient pas la colonne — l'exiger partout faisait
+#: échouer `validate_benchmark` sur la colonne manquante, qui s'arrêtait là sans
+#: vérifier les onze autres règles.
+BENCHMARK_CORE_COLUMNS = ("query", "function")
+
+#: Colonnes vérifiées quand elles sont là, ignorées sinon.
+OPTIONAL_CONTEXT_COLUMNS = ("category_query",)
 
 #: Les listes parallèles de la vérité terrain. `results_poi_id` et
 #: `results_poi_name` sont exigées partout ; `dist` et `rank` sont vérifiées
@@ -96,8 +106,10 @@ class Template:
 
 _PKG = f"{__package__}.geospatial"
 
+# `same_cat` a été retirée : plus aucun template ne la produit depuis que les
+# questions de point ont cessé de filtrer par catégorie.
 _ANCHOR_COLS = ("anchor_index", "anchor_name", "anchor_category",
-                "anchor_x", "anchor_y", "same_cat")
+                "anchor_x", "anchor_y")
 _POINT_B_COLS = ("point_b_index", "point_b_name", "point_b_category",
                  "point_b_x", "point_b_y")
 _AREA_COLS = ("area_index", "area_name", "area_geometry")
@@ -298,7 +310,8 @@ def validate_benchmark(bench, df_osm=None, dist_is_ranking_key=True,
         query = row["query"]
         if not isinstance(query, str) or not query.strip():
             problems.append(f"{where} : query vide")
-        elif str(row["category_query"]) not in query:
+        elif ("category_query" in bench.columns
+              and str(row["category_query"]) not in query):
             problems.append(
                 f"{where} : query ne mentionne pas category_query="
                 f"{row['category_query']!r}"
@@ -327,7 +340,11 @@ def validate_benchmark(bench, df_osm=None, dist_is_ranking_key=True,
                 f"(benchmark {got!r}, corpus {exp!r}) — {len(mismatched)} cas"
             )
 
-        # 9. tout résultat est de la catégorie demandée
+        # 9. tout résultat est de la catégorie demandée — seulement pour les
+        # trois templates qui en annoncent une ; les neuf autres mélangent les
+        # catégories par construction, ce n'est pas une incohérence.
+        if "category_query" not in bench.columns:
+            continue
         wrong_cat = [(i, cat_by_id[i]) for i in ids
                      if cat_by_id[i] != row["category_query"]]
         if wrong_cat:

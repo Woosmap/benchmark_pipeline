@@ -98,9 +98,12 @@ def test_declared_columns_present(template, run_template):
     """Toutes les colonnes annoncées par le template sont là.
 
     Le registre est la source de vérité : s'il promet `area_geometry`, la
-    visualisation et l'enregistrement comptent dessus. Huit templates échouent
-    ici depuis f1be9c1, et tous parce que c'est le registre qui est périmé, pas
-    le générateur — le motif de chaque `xfail` dit lequel des deux corriger.
+    visualisation et l'enregistrement comptent dessus. Neuf des douze templates
+    échouaient ici depuis f1be9c1, parce que le registre exigeait partout
+    `category_query` et `same_cat` que les générateurs avaient cessé de
+    produire ; les deux colonnes ont été retirées du schéma. Ne restent que
+    `point_towards` et `point_between`, dont le registre annonce des `point_b_*`
+    là où ils publient des `anchor_b_*`.
     """
     bench = run_template(template)
     expected = (BENCHMARK_CORE_COLUMNS + REQUIRED_RESULT_COLUMNS
@@ -160,11 +163,10 @@ def test_benchmark_is_coherent(template, run_template, df_osm):
     `poi_id`, appariement id↔nom, catégorie des résultats, distances finies et
     croissantes, exclusion de l'ancre, mention de la catégorie dans l'énoncé.
 
-    Passe par `conftest.coherence_problems` et non par `validate_benchmark`
-    directement : les huit templates sans `category_query` feraient sinon
-    s'arrêter le validateur sur la colonne manquante, qui renvoie alors ce seul
-    message sans avoir rien vérifié d'autre. Les doublons de `point_near_metric`
-    passaient ainsi inaperçus.
+    Passe par `conftest.coherence_problems`, qui applique `dist_is_ranking_key`
+    et `allow_empty` propres au template. La catégorie, elle, n'est vérifiée que
+    sur les trois templates qui publient `category_query` : les neuf autres
+    mélangent les catégories par construction.
 
     Les questions sans réponse sont tolérées ici : elles sont inévaluables, pas
     incohérentes, et `test_no_unanswerable_questions` s'en charge séparément.
