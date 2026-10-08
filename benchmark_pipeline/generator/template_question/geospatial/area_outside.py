@@ -1,6 +1,6 @@
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
@@ -10,7 +10,7 @@ from benchmark_pipeline.generator.template_question.registry import template
 def outside_area(area, category, pois, cat_col="category"):
     """Classe les POIs d'une catégorie par distance à une zone.
 
-    Corps identique à `inside_area` ; c'est l'appelant qui restreint aux POIs
+    Corps identique à `pois_inside_area` ; c'est l'appelant qui restreint aux POIs
     extérieurs. Ici la distance est réellement discriminante, puisqu'elle est
     strictement positive hors du polygone.
 

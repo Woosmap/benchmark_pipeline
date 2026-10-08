@@ -1,7 +1,8 @@
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
+import shapely
 
 from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
@@ -66,18 +67,35 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
     side_y = side_of_street(s, poi_y_geom)
     t_y = s.project(poi_y_geom)
 
-    sub = df[df["category"] == cat].copy()
-    sub["side"] = sub.geometry.apply(lambda p: side_of_street(s, p))
-    sub["along"] = sub.geometry.apply(lambda p: s.project(p))
-    sub["cross"] = sub.geometry.distance(s)
+    # L'index spatial écarte d'emblée les POIs trop éloignés de la rue : le calcul
+    # de côté ne porte plus que sur les candidats admissibles, pas sur toute la
+    # catégorie. `dwithin` donne exactement le filtre `cross <= max_cross`.
+    sub = df[df["category"] == cat]
+    proches = np.sort(sub.sindex.query(s, predicate="dwithin", distance=max_cross))
+    sub = sub.iloc[proches]
+    if sub.empty:
+        return pd.DataFrame(columns=["poi_id", "poi_name", "cross", "along", "score", "rank"])
 
-    sub = sub[(sub["side"] != side_y)
-              & (sub["cross"] <= max_cross)
-              & ((sub["along"] - t_y).abs() <= max_along)]
+    # Même géométrie que `side_of_street`, mais sur tout le lot en une fois.
+    pts = sub.geometry.values
+    along = shapely.line_locate_point(s, pts)
+    p0 = shapely.line_interpolate_point(s, np.maximum(along - 5.0, 0))
+    p1 = shapely.line_interpolate_point(s, np.minimum(along + 5.0, s.length))
+    x0, y0 = shapely.get_x(p0), shapely.get_y(p0)
+    x1, y1 = shapely.get_x(p1), shapely.get_y(p1)
+    px, py = shapely.get_x(pts), shapely.get_y(pts)
+    side = np.where((x1 - x0) * (py - y0) - (y1 - y0) * (px - x0) >= 0, 1.0, -1.0)
+    cross = shapely.distance(pts, s)
 
-    out = (sub.assign(score=(sub["along"] - t_y).abs())
-              .nsmallest(k, "score")[["poi_id", "poi_name", "cross", "along", "score"]]
-              .reset_index(drop=True))
+    garde = (side != side_y) & (cross <= max_cross) & (np.abs(along - t_y) <= max_along)
+    out = pd.DataFrame({
+        "poi_id": sub["poi_id"].values[garde],
+        "poi_name": sub["poi_name"].values[garde],
+        "cross": cross[garde],
+        "along": along[garde],
+    })
+    out["score"] = (out["along"] - t_y).abs()
+    out = out.nsmallest(k, "score").reset_index(drop=True)
     out["rank"] = out.index + 1
     return out
 
@@ -106,7 +124,10 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
     list_cat = df_osm["category"].unique()
     n_queries_per_stratum = nb_q // len(list_cat)
 
-    lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiString"])]
+    # "MultiLineString", pas "MultiString" : la coquille écartait silencieusement
+    # toutes les rues en plusieurs tronçons, que `side_of_street` sait pourtant
+    # traiter. Aucun filtre ne levait, le tirage était simplement amputé.
+    lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiLineString"])]
 
     for cat_q in list_cat:
         n = 0
@@ -115,7 +136,10 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             tries += 1
             street = lines.loc[rng.choice(lines.index)]
 
-            near = df_osm[df_osm.geometry.distance(street.geometry) <= 40]
+            # Sans l'index, cette ligne mesurait la distance des 19 000 POIs à la
+            # rue, à chaque essai — jusqu'à 200 fois par catégorie.
+            proches = np.sort(df_osm.sindex.query(street.geometry, predicate="dwithin", distance=40))
+            near = df_osm.iloc[proches]
             if near.empty:
                 continue
             poi_y = near.loc[rng.choice(near.index)]

@@ -1,6 +1,6 @@
-from abc import ABC, abstractmethod
-from itertools import combinations
 import math
+from abc import ABC, abstractmethod
+
 
 class Feature(ABC):
     """
@@ -24,7 +24,6 @@ class Feature(ABC):
             La valeur de la feature (str, bool, float, list, etc.), ou None si
             l'information est absente ou non applicable.
         """
-        pass
 
     @abstractmethod
     def to_text(self, value) -> str:
@@ -38,7 +37,6 @@ class Feature(ABC):
             str | list[str] | None: Fragment(s) de phrase prêt(s) à être intégré(s)
                 dans une question, ou None si la valeur ne produit pas de texte utile.
         """
-        pass
 
 
 class OutDoorSeating(Feature):

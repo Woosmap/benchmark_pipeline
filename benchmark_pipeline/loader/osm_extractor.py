@@ -1,12 +1,11 @@
-import time
+import json
 import os
 
-import pandas as pd
-import osmnx as ox
 import geopandas as gpd
-import json
+import osmnx as ox
+import pandas as pd
 import pyarrow as pa
-from shapely.ops import unary_union
+
 
 def safe_to_parquet(gdf, path):
     """

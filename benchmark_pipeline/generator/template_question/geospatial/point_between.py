@@ -1,13 +1,13 @@
-from scipy.spatial import cKDTree
-from scipy.spatial import cKDTree
-import numpy as np
 from collections import defaultdict
+
 import duckdb
+import numpy as np
 import pandas as pd
+from scipy.spatial import cKDTree
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
 from benchmark_pipeline.generator.template_question.ratio import allocate
+from benchmark_pipeline.generator.template_question.registry import template
 
 
 def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
@@ -26,7 +26,7 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
         ay (float): Ordonnée Lambert-93 du point A.
         bx (float): Abscisse Lambert-93 du point B.
         by (float): Ordonnée Lambert-93 du point B.
-        cat (str): Catégorie de POI recherchée.
+        cat (str | None): Catégorie de POI recherchée ; `None` ne filtre pas.
         k (int): Nombre maximal de résultats retournés.
         corridor_m (float): Demi-largeur du corridor, en mètres.
         con (duckdb.DuckDBPyConnection | None): Connexion à réutiliser.
@@ -50,7 +50,8 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
                    sqrt(pow($bx - $ax, 2) + pow($by - $ay, 2)) AS ab_len
         ), g AS (
             SELECT poi_id, poi_name, ST_GeomFromWKB(geom_wkb) AS geom
-            FROM poi WHERE category = $cat
+            -- $cat vaut NULL quand on veut le corridor entier, toutes catégories.
+            FROM poi WHERE $cat IS NULL OR category = $cat
         ), p AS (
             SELECT poi_id, poi_name,
                    ((ST_X(geom) - $ax) * ab.abx + (ST_Y(geom) - $ay) * ab.aby) / ab.ab_len AS along,
@@ -71,80 +72,101 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
           "corr": corridor_m}).df()
 
 @template("make_question_point_between")
-def make_question_point_between(df_osm, ratio_cat_q=None, corridor_m=200.0, nb_q=110, seed=42, max_try=200):
-    """Génère les questions d'entre-deux « X entre A et B ».
+def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
+                                nb_q=110, distance_max=1000.0, seed=42,
+                                nb_ancres_candidates=300):
+    """Génère les questions d'entre-deux « pois entre A et B ».
 
-    Même tirage du point B que `make_question_towardsb` : un POI à moins de
-    1 000 m de l'ancre. La vérité terrain est ordonnée par distance à l'axe A-B,
-    et non par distance à l'ancre.
+    Les deux ancres sont des POIs quelconques, B étant tiré dans le voisinage de A.
+    La vérité terrain est le corridor A-B tout entier, sans contrainte de catégorie
+    sur les réponses ; le quota est réparti sur la catégorie de l'ancre A, de sorte
+    que les classes d'ancres soient équilibrées.
 
     Args:
-        df_osm (GeoDataFrame): POIs servant d'ancres, de points B et de cibles.
+        df_osm (GeoDataFrame): POIs servant d'ancres et de cibles.
+        ratio_cat_anchor (dict[str, float] | None): Poids par catégorie d'ancre.
+            `None` répartit également sur toutes les catégories présentes.
         corridor_m (float): Demi-largeur du corridor, en mètres.
-        nb_q (int): Nombre de questions visé, stratifié par catégorie d'ancre.
+        nb_q (int): Nombre total de questions visé.
+        distance_max (float): Rayon de tirage de B autour de A, en mètres.
         seed (int): Graine du générateur aléatoire.
+        nb_ancres_candidates (int): Ancres A échantillonnées par catégorie pour
+            énumérer les couples à portée. Les borner évite une énumération
+            quadratique sur les catégories denses.
 
     Returns:
-        DataFrame: Une ligne par question. Mêmes colonnes que
-            `make_question_towardsb`, la distance rapportée étant l'écart latéral.
-
+        DataFrame: Une ligne par question. Colonnes `query`, `anchor_a_*`,
+            `anchor_b_*`, `function`, `results_poi_*` ; la distance rapportée est
+            l'écart latéral à l'axe A-B.
     """
     list_cat = df_osm["category"].unique()
-    if ratio_cat_q:
-        balance = allocate(nb_q, ratio_cat_q)
-    else: balance = allocate(nb_q, {cat: 1 for cat in list_cat})
+    balance = allocate(nb_q, ratio_cat_anchor or {cat: 1 for cat in list_cat})
 
-    xy = np.column_stack([df_osm.x.values, df_osm.y.values])   # (n, 2)
-    tree = cKDTree(xy)
+    coordonnees = np.column_stack([df_osm.x.values, df_osm.y.values])
+    arbre = cKDTree(coordonnees)
+    poi_ids = df_osm["poi_id"].to_numpy()
+    categories = df_osm["category"].to_numpy()
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
-  
-    pid = df_osm["poi_id"].to_numpy()  
-    for cat_q, nb_q_cat in balance.items():
-        n=0
-        nb_try = 0
-        while n < nb_q_cat and nb_try < max_try:
-            poi_answer = df_osm[df_osm['category'] == cat_q].sample(1, random_state=rng).iloc[0]
-            for cat_anc in list_cat:
-                #sub = df_osm[df_osm['category'] == cat_anc]
-                id_anchor_a = rng.choice([k for k in tree.query_ball_point([poi_answer.x, poi_answer.y], 1000)
-                                        if pid[k] != poi_answer.poi_id])
-                anchor_a = df_osm.iloc[id_anchor_a]
 
-                x_b, y_b = -(anchor_a.geometry.x - 2*poi_answer.geometry.x), -(anchor_a.geometry.y - 2*poi_answer.geometry.y)
-                list_id_anchor_b = [k for k in tree.query_ball_point([x_b, y_b], 400) if pid[k] != anchor_a.poi_id]
-                if len(list_id_anchor_b) > 0:
-                    id_anchors_b = rng.choice(list_id_anchor_b)
-                anchor_b = df_osm.iloc[id_anchors_b]   
+    for cat_ancre_a, quota in balance.items():
+        positions_ancre = np.flatnonzero((df_osm["category"] == cat_ancre_a).to_numpy())
+        if len(positions_ancre) == 0:
+            continue
 
-                results = between_ab_sql(df_osm, anchor_a.x, anchor_a.y, anchor_b.x, anchor_b.y, cat_q, corridor_m=corridor_m)
-                if len(results) >0:
-                    if cat_anc == cat_q:
-                        results = results[results["poi_id"] != anchor_a.poi_id]
-                    if cat_q == anchor_b.category:
-                        results = results[results["poi_id"] != anchor_b.poi_id]
+        # Énumérer les couples à portée plutôt que tirer au hasard en espérant
+        # tomber juste : une requête d'arbre par ancre A candidate, et les voisins
+        # rangés par catégorie. On sait alors quelles catégories de B existent
+        # vraiment autour de cette catégorie de A, sans aucun essai perdu.
+        positions_ancre = rng.permutation(positions_ancre)[:nb_ancres_candidates]
+        couples = defaultdict(list)
+        for position_a, voisins in zip(positions_ancre,
+                                       arbre.query_ball_point(coordonnees[positions_ancre], distance_max)):
+            par_categorie = defaultdict(list)
+            for k in voisins:
+                if poi_ids[k] != poi_ids[position_a]:
+                    par_categorie[categories[k]].append(k)
+            for cat_voisine, positions_b in par_categorie.items():
+                couples[cat_voisine].append((position_a, positions_b))
+        if not couples:
+            continue
 
-                    dic_benchmark["query"].append(f"{cat_q} between {anchor_a.poi_name} and {anchor_b.poi_name}")
-                    dic_benchmark["anchor_a_index"].append(anchor_a.poi_id)
-                    dic_benchmark["anchor_a_name"].append(anchor_a.poi_name)
-                    dic_benchmark["anchor_a_category"].append(anchor_a.category)
-                    dic_benchmark["anchor_a_x"].append(anchor_a.x)
-                    dic_benchmark["anchor_a_y"].append(anchor_a.y)
-                    dic_benchmark["anchor_b_index"].append(anchor_b.poi_id)
-                    dic_benchmark["anchor_b_name"].append(anchor_b.poi_name)
-                    dic_benchmark["anchor_b_category"].append(anchor_b.category)
-                    dic_benchmark["anchor_b_x"].append(anchor_b.x)
-                    dic_benchmark["anchor_b_y"].append(anchor_b.y)
-                    dic_benchmark["category_query"].append(cat_q)
-                    dic_benchmark["same_cat"].append(cat_anc==cat_q)
-                    dic_benchmark["function"].append("between_ab_sql")
-                    dic_benchmark["results_poi_id"].append(list(results.poi_id))
-                    dic_benchmark["results_poi_name"].append(list(results.poi_name))
-                    dic_benchmark["results_poi_dist"].append(list(results.cross_m))
-                    dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
-                    n += 1
-                    if n > nb_q_cat:
-                        break
-                else: nb_try += 1
+        # Le quota se répartit sur les seules catégories de B réellement présentes
+        # dans ces voisinages : une catégorie rare ne mange plus de tentatives.
+        for cat_ancre_b, part in allocate(quota, {cat: 1 for cat in couples}).items():
+            obtenues = 0
+            # Permutation plutôt que tirages répétés : on parcourt les couples
+            # possibles une seule fois, et on s'arrête dès le quota atteint.
+            for rang in rng.permutation(len(couples[cat_ancre_b])):
+                if obtenues == part:
+                    break
+                position_a, positions_b = couples[cat_ancre_b][rang]
+                anchor_a = df_osm.iloc[position_a]
+                anchor_b = df_osm.iloc[rng.choice(positions_b)]
+
+                results = between_ab_sql(df_osm, anchor_a.x, anchor_a.y, anchor_b.x, anchor_b.y,
+                                         cat=None, corridor_m=corridor_m)
+                # Les deux ancres appartiennent à leur propre corridor : on les retire.
+                results = results[~results["poi_id"].isin([anchor_a.poi_id, anchor_b.poi_id])]
+                if results.empty:
+                    continue
+                obtenues += 1
+
+                dic_benchmark["query"].append(f"pois between {anchor_a.poi_name} and {anchor_b.poi_name}")
+                dic_benchmark["anchor_a_index"].append(anchor_a.poi_id)
+                dic_benchmark["anchor_a_name"].append(anchor_a.poi_name)
+                dic_benchmark["anchor_a_category"].append(anchor_a.category)
+                dic_benchmark["anchor_a_x"].append(anchor_a.x)
+                dic_benchmark["anchor_a_y"].append(anchor_a.y)
+                dic_benchmark["anchor_b_index"].append(anchor_b.poi_id)
+                dic_benchmark["anchor_b_name"].append(anchor_b.poi_name)
+                dic_benchmark["anchor_b_category"].append(anchor_b.category)
+                dic_benchmark["anchor_b_x"].append(anchor_b.x)
+                dic_benchmark["anchor_b_y"].append(anchor_b.y)
+                dic_benchmark["function"].append("between_ab_sql")
+                dic_benchmark["results_poi_id"].append(list(results.poi_id))
+                dic_benchmark["results_poi_name"].append(list(results.poi_name))
+                dic_benchmark["results_poi_dist"].append(list(results.cross_m))
+                dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
 
     return pd.DataFrame(dic_benchmark)

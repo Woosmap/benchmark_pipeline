@@ -1,8 +1,6 @@
-from scipy.spatial import cKDTree
-from scipy.spatial import cKDTree
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
@@ -10,31 +8,29 @@ from benchmark_pipeline.generator.template_question.registry import template
 
 
 def touching_streets(df_streets, street, tol=1.0):
-    """Retourne les rues en contact avec une rue donnée.
-
-    Le critère est métrique et non topologique : toute rue dont la géométrie passe
-    à moins de `tol` mètres est retenue, ce qui couvre les nœuds partagés comme
-    les extrémités jointives imparfaitement numérisées.
+    """Rues qui croisent vraiment une rue donnée.
 
     Args:
         df_streets (GeoDataFrame): Rues en EPSG:2154.
-        id_street: Index de la rue de référence dans `df_streets`.
-        tol (float): Tolérance de contact, en mètres.
+        street (Series): Rue de référence, avec `id_street` et `geometry`.
+        tol (float): Tolérance de pré-filtrage, en mètres.
 
     Returns:
-        GeoDataFrame: Sous-ensemble de `df_streets` en contact, la rue de
-            référence exclue.
+        GeoDataFrame: Sous-ensemble de `df_streets` dont l'intersection avec
+            `street` est non vide, la rue de référence exclue.
     """
-    
     geom = street.geometry
-    
     d = df_streets.geometry.distance(geom)
-    return df_streets[(d <= tol) & (df_streets['id_street'] != float(street.id_street))]
+    proches = df_streets[(d <= tol) & (df_streets["id_street"] != street.id_street)]
+    # La distance seule admet deux rues simplement *voisines* — deux parallèles
+    # à 0,5 m passent le seuil sans se croiser. Leur `intersection()` est alors
+    # vide, et `distance()` contre une géométrie vide vaut NaN : toute la vérité
+    # terrain de la question perdait son ordre. Le seuil ne sert plus qu'à
+    # écarter grossièrement avant le test exact, qui est coûteux.
+    return proches[~proches.geometry.intersection(geom).is_empty]
 
-def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
+def cross_streets(df, street_geom_a, street_geom_b, k=100):
     """Retourne les POIs d'une catégorie les plus proches du croisement de deux rues.
-
-    Le croisement est l'intersection géométrique des deux rues.
 
     Args:
         df (GeoDataFrame): POIs candidats en EPSG:2154.
@@ -48,7 +44,7 @@ def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
             `rank` (1-based), triées par distance croissante.
     """
     inter_point = street_geom_a.intersection(street_geom_b)
-    sub = df[df["category"] == cat].copy()
+    sub = df.copy()
     sub["dist"] = sub.geometry.distance(inter_point)
     out = sub.nsmallest(k, "dist")[["poi_id", "poi_name", "dist"]].reset_index(drop=True)
     out["rank"] = out.index + 1
@@ -57,10 +53,6 @@ def cross_streets(df, street_geom_a, street_geom_b, cat, k=100):
 @template("make_question_street_cross")
 def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """Génère les questions de carrefour « X au croisement de R1 et R2 ».
-
-    Pour chaque catégorie cible, tire une rue puis une rue sécante parmi celles en
-    contact avec elle. Les rues sans sécante sont ignorées, si bien que le nombre
-    de questions effectivement produites peut rester sous le quota.
 
     Args:
         df_osm (GeoDataFrame): POIs cibles en EPSG:2154.
@@ -76,32 +68,33 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
-    list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
-    for cat_q in list_cat:
-        for _ in range(n_queries_per_stratum):
-            id_street_a = rng.choice(df_streets['id_street'])
-            street_a = df_streets.loc[id_street_a]
-            candidates = touching_streets(df_streets, street_a)
-            if len(candidates) > 0:
-                id_street_b = rng.choice(candidates.index)
-                street_b = df_streets.loc[id_street_b]
-                results = cross_streets(df_osm, street_a.geometry, street_b.geometry, cat_q)
+    for _ in range(nb_q):
+        # Une rue s'identifie par la valeur de sa colonne `id_street`, comme
+        # dans `street_along`. L'ancien code tirait cette valeur puis la passait
+        # à `.loc`, qui attend une étiquette d'index : correct tant que les deux
+        # coïncident, faux en silence dès que `df_streets` a été filtré ou
+        # réindexé en amont.
+        id_street_a = rng.choice(df_streets["id_street"])
+        street_a = df_streets[df_streets["id_street"] == id_street_a].iloc[0]
+        candidates = touching_streets(df_streets, street_a)
+        if len(candidates) > 0:
+            id_street_b = rng.choice(candidates["id_street"])
+            street_b = candidates[candidates["id_street"] == id_street_b].iloc[0]
+            results = cross_streets(df_osm, street_a.geometry, street_b.geometry)
 
-                dic_benchmark["query"].append(f"{cat_q} at the intersection of  {street_a['street_name']} and {street_b['street_name']}")
-                dic_benchmark["category_query"].append(cat_q)
-                dic_benchmark["street_a_index"].append(id_street_a)
-                dic_benchmark["street_a_name"].append(street_a["street_name"])
-                dic_benchmark["street_a_geometry"].append(street_a.geometry)
-                dic_benchmark["street_b_index"].append(id_street_b)
-                dic_benchmark["street_b_name"].append(street_b["street_name"])
-                dic_benchmark["street_b_geometry"].append(street_b.geometry)
-                dic_benchmark["function"].append("cross_streets")
-                dic_benchmark["results_poi_id"].append(list(results.poi_id))
-                dic_benchmark["results_poi_name"].append(list(results.poi_name))
-                dic_benchmark["results_poi_dist"].append(list(results.dist))
-                dic_benchmark["results_poi_rank"].append(list(results["rank"]))
-            else: continue
+            dic_benchmark["query"].append(f"pois at the intersection of  {street_a['street_name']} and {street_b['street_name']}")
+            dic_benchmark["street_a_index"].append(id_street_a)
+            dic_benchmark["street_a_name"].append(street_a["street_name"])
+            dic_benchmark["street_a_geometry"].append(street_a.geometry)
+            dic_benchmark["street_b_index"].append(id_street_b)
+            dic_benchmark["street_b_name"].append(street_b["street_name"])
+            dic_benchmark["street_b_geometry"].append(street_b.geometry)
+            dic_benchmark["function"].append("cross_streets")
+            dic_benchmark["results_poi_id"].append(list(results.poi_id))
+            dic_benchmark["results_poi_name"].append(list(results.poi_name))
+            dic_benchmark["results_poi_dist"].append(list(results.dist))
+            dic_benchmark["results_poi_rank"].append(list(results["rank"]))
+        else: continue
 
     return pd.DataFrame(dic_benchmark)
 

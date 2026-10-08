@@ -44,3 +44,9 @@ testpaths = ["tests"]
 pythonpath = ["."]   # for `from tests.known_defects import ...`
 addopts = ["--strict-markers", "-ra"]
 markers = ["slow: slow tests (DuckDB per question)"]
+
+[tool.ruff]
+extend-exclude = ["demo.ipynb", "Untitled.ipynb"] 
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]

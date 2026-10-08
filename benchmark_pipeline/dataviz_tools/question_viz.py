@@ -11,14 +11,14 @@ Corrections par rapport à la version précédente :
   - les invariants (listes parallèles, unicité de poi_id) sont vérifiés.
 """
 
-import numpy as np
-import pandas as pd
 import geopandas as gpd
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 from matplotlib.colors import LinearSegmentedColormap
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
-from shapely.geometry import Point, LineString
+from shapely.geometry import LineString, Point
 
 # Rampe séquentielle une seule teinte : rang 1 = foncé, dernier rang = clair.
 # Tronquée à 0.30 pour que les derniers rangs restent visibles sur fond blanc.
@@ -187,7 +187,7 @@ def plot_question(row, df_osm, ax=None, label_top=3, basemap=True, pad=150,
                 ax, crs=df_osm.crs,
                 source=cx.providers.CartoDB.PositronNoLabels,
             )
-        except Exception as e:                  # réseau absent, clé, quota...
+        except OSError as e:                  # réseau absent, clé, quota...
             print(f"[plot_question] fond de carte ignoré : {e}")
 
     # 5. barre de couleur
@@ -239,7 +239,7 @@ def plot_all_templates(bench, df_osm, seed=42, basemap=True, ncols=3):
     for ax, (_, row) in zip(axes, first.iterrows()):
         try:
             plot_question(row, df_osm, ax=ax, label_top=1, basemap=basemap)
-        except Exception as e:
+        except OSError as e:
             ax.text(0.5, 0.5, f"{row['function']}\n{type(e).__name__}: {e}",
                     ha="center", va="center", fontsize=8, wrap=True)
             ax.set_axis_off()
