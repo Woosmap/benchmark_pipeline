@@ -60,6 +60,8 @@ class OutDoorSeating(Feature):
             return "with outdoor seating"
         if value=="no":
             return "without outdoor seating"
+        if value=="terrace":
+            return "with terrace"
         return None
 
 
@@ -112,7 +114,7 @@ class CookingType(Feature):
     def to_text(self, value):
         """Retourne "cooking_type <type>" si le type est renseigné, sinon None."""
         if value is not None and value!="nan":
-            return f"cooking_type {value}"
+            return f"{value} food"
 
 
 class Category(Feature):
@@ -132,4 +134,4 @@ class Category(Feature):
     def to_text(self, value):
         """Retourne "category <type>" si la cat est renseignée, sinon None."""
         if value is not None and value!="nan":
-            return f"category {value}"
+            return f"{value}"

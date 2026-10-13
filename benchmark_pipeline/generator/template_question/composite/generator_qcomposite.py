@@ -10,52 +10,62 @@ from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import REGISTRY
 
 list_template = ['make_question_point_near']
-"""
-['make_question_area_border',
-                 'make_question_area_inside', 
-                 'make_question_point_between', 'make_question_point_near_cardinal',
-                 'make_question_point_near_metric', 'make_question_point_near',
-                 'make_question_point_towards', 'make_question_street_along',
-                 'make_question_street_cross', 'make_question_street_opposite_side']
-"""
-#'make_question_area_outside', 'make_question_area_direction'
+MOTS_GENERIQUES = {"poi", "pois"}
+
 
 def _groupes_disponibles(reponse, nb_attributs):
-    """Contraintes d'attributs portées par les POIs d'une réponse spatiale.
-
-    Args:
-        reponse (DataFrame): POIs de la réponse, indexés par `poi_id`, dans
-            l'ordre de pertinence spatiale.
-        nb_attributs (int): Nombre d'attributs à combiner.
-
-    Returns:
-        list[tuple]: `(colonnes, valeurs, poi_ids)`. Les `poi_ids` sont un
-            sous-ensemble de la réponse, dans son ordre.
-    """
     trouves = []
     for colonnes in combinations(reponse.columns, nb_attributs):
         renseignes = reponse.dropna(subset=list(colonnes))
-        # `sort=False` : l'ordre d'apparition est l'ordre de pertinence spatiale.
         groupes = renseignes.groupby(list(colonnes), sort=False, observed=True)
-        trouves += [
-            (colonnes, valeurs if isinstance(valeurs, tuple) else (valeurs,), list(pois))
-            for valeurs, pois in groupes.groups.items()
-        ]
+        for valeurs, pois in groupes.groups.items():
+            if not isinstance(valeurs, tuple):
+                valeurs = (valeurs,)
+            trouves.append((colonnes, valeurs, list(pois)))
     return trouves
 
 
-def _ligne_composite(question, colonnes, valeurs, pois):
+def _to_text_par_colonne(features):
+    return {f.COLUMN: f.to_text for f in features if hasattr(f, "to_text")}
+
+
+def question_en_texte(query, colonnes, valeurs, features=FEATURES):
+    """Énoncé en langue naturelle : le « pois » initial cède la place aux attributs.
+
+    Args:
+        query (str): Énoncé spatial, par exemple « pois near Gare du Nord ».
+        colonnes (tuple[str]): Colonnes des attributs contraints.
+        valeurs (tuple): Valeurs attendues, alignées sur `colonnes`.
+        features (list[Feature]): Features connues, pour retrouver leur `to_text`.
+
+    Returns:
+        str: Par exemple « category restaurant cooking_type italian near Gare
+            du Nord ». `query` inchangée si aucun attribut ne rend de texte.
+    """
+    to_text = _to_text_par_colonne(features)
+    fragments = [to_text[c](v) for c, v in zip(colonnes, valeurs) if c in to_text]
+    fragments = [f for f in fragments if f]
+    if not fragments:
+        return query
+
+    premier_mot, *reste = query.split(" ")
+    tete = fragments if premier_mot.lower() in MOTS_GENERIQUES else ["place", *fragments]
+    return " ".join([*tete, *reste])
+
+
+def _ligne_composite(question, colonnes, valeurs, pois, features=FEATURES):
     """Assemble une ligne de sortie : la question spatiale, plus sa contrainte."""
     qualificatif = " ".join(f"{c}={v}" for c, v in zip(colonnes, valeurs))
-    mots = question["query"].split(" ")
+    premier_mot, *reste = question["query"].split(" ")
     return {
         **question,
         "features": colonnes,
         "values": valeurs,
         "results_features_pois_id": pois,
         # Le qualificatif se glisse après le premier mot : « pois cuisine=X near Y ».
-        "query_geo_semantic": " ".join(mots[:1] + [qualificatif] + mots[1:])
+        "query_geo_semantic": " ".join([premier_mot, qualificatif, *reste])
                               if qualificatif else question["query"],
+        "query_texte": question_en_texte(question["query"], colonnes, valeurs, features),
     }
 
 
@@ -75,25 +85,45 @@ def question_geo_semantic(df_question, df_osm, feature_cols, ratio_features,
 
     Returns:
         DataFrame: Les colonnes de `df_question`, plus `features`, `values`,
-            `results_features_pois_id` et `query_geo_semantic`.
+            `results_features_pois_id`, `query_geo_semantic` (énoncé balisé
+            `colonne=valeur`) et `query_texte` (énoncé en langue naturelle).
     """
     colonnes_attributs = [getattr(c, "COLUMN", c) for c in feature_cols]
     rng = np.random.default_rng(seed)
     attributs = df_osm.set_index("poi_id")[colonnes_attributs]
     budget = allocate(nb_q_by_feat, ratio_features)
+    a_enrichir = rng.random(len(df_question)) < part_avec_features
+
     lignes = []
-    for (_, question), enrichie in zip(df_question.iterrows(),
-                                       rng.random(len(df_question)) < part_avec_features):
+    for (_, question), enrichie in zip(df_question.iterrows(), a_enrichir):
         reponse = attributs.reindex(question["results_poi_id"])
         if not enrichie:
-            lignes.append(_ligne_composite(question, (), (), list(reponse.index)))
+            lignes.append(_ligne_composite(question, (), (), list(reponse.index), feature_cols))
             continue
         for nb_attributs, nb_tires in budget.items():
             candidats = _groupes_disponibles(reponse, nb_attributs)
-            tires = rng.choice(len(candidats), min(nb_tires, len(candidats)),
-                               replace=False) if candidats else []
-            lignes += [_ligne_composite(question, *candidats[i]) for i in tires]
+            if not candidats:
+                continue
+            tires = rng.choice(len(candidats), min(nb_tires, len(candidats)), replace=False)
+            lignes += [_ligne_composite(question, *candidats[i], feature_cols) for i in tires]
     return pd.DataFrame(lignes)
+
+
+def _appeler_template(nom, nb_q, sources):
+    """Appelle un générateur du REGISTRY avec les seules sources qu'il accepte.
+
+    Args:
+        nom (str): Clé du REGISTRY.
+        nb_q (int): Nombre de questions demandé au générateur.
+        sources (dict): `df_osm`, `df_area` et `df_streets` disponibles ; chaque
+            template n'en déclare qu'une partie dans sa signature.
+
+    Returns:
+        DataFrame: Les questions spatiales produites par ce template.
+    """
+    generateur = REGISTRY[nom]
+    attendues = inspect.signature(generateur).parameters
+    return generateur(nb_q=nb_q, **{k: v for k, v in sources.items() if k in attendues})
 
 
 def make_question_composite(
@@ -127,16 +157,14 @@ def make_question_composite(
         seed (int): Graine du tirage sémantique.
 
     Returns:
-        DataFrame: Les questions composites, `query_geo_semantic` portant l'énoncé
-            enrichi et `query` conservant l'énoncé spatial seul.
+        DataFrame: Les questions composites. `query` garde l'énoncé spatial seul,
+            `query_geo_semantic` l'énoncé balisé `colonne=valeur`, et
+            `query_texte` l'énoncé en langue naturelle.
     """
     ratio_features = ratio_features or {1: 1, 2: 1, 3: 1}
     sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
     df_geo_q = pd.concat(
-        [REGISTRY[name](nb_q=nb_q_by_temp,
-                        **{k: v for k, v in sources.items()
-                           if k in inspect.signature(REGISTRY[name]).parameters})
-         for name in list_template],
+        [_appeler_template(nom, nb_q_by_temp, sources) for nom in list_template],
         ignore_index=True)
     return question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features,
                                  nb_q_by_feat, part_avec_features, seed)

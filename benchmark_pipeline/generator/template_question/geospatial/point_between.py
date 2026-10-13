@@ -114,10 +114,6 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
         if len(positions_ancre) == 0:
             continue
 
-        # Énumérer les couples à portée plutôt que tirer au hasard en espérant
-        # tomber juste : une requête d'arbre par ancre A candidate, et les voisins
-        # rangés par catégorie. On sait alors quelles catégories de B existent
-        # vraiment autour de cette catégorie de A, sans aucun essai perdu.
         positions_ancre = rng.permutation(positions_ancre)[:nb_ancres_candidates]
         couples = defaultdict(list)
         for position_a, voisins in zip(positions_ancre,
@@ -131,12 +127,8 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
         if not couples:
             continue
 
-        # Le quota se répartit sur les seules catégories de B réellement présentes
-        # dans ces voisinages : une catégorie rare ne mange plus de tentatives.
         for cat_ancre_b, part in allocate(quota, {cat: 1 for cat in couples}).items():
             obtenues = 0
-            # Permutation plutôt que tirages répétés : on parcourt les couples
-            # possibles une seule fois, et on s'arrête dès le quota atteint.
             for rang in rng.permutation(len(couples[cat_ancre_b])):
                 if obtenues == part:
                     break
@@ -146,7 +138,6 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
 
                 results = between_ab_sql(df_osm, anchor_a.x, anchor_a.y, anchor_b.x, anchor_b.y,
                                          cat=None, corridor_m=corridor_m)
-                # Les deux ancres appartiennent à leur propre corridor : on les retire.
                 results = results[~results["poi_id"].isin([anchor_a.poi_id, anchor_b.poi_id])]
                 if results.empty:
                     continue
@@ -168,5 +159,5 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
                 dic_benchmark["results_poi_name"].append(list(results.poi_name))
                 dic_benchmark["results_poi_dist"].append(list(results.cross_m))
                 dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
-
+                dic_benckmark["anchors"].append([("point", anchor_a.poi_id), ("point", anchor_b.poi_id)])
     return pd.DataFrame(dic_benchmark)

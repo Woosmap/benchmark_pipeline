@@ -70,7 +70,7 @@ def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42
 
                 dic_benchmark["query"].append(f"{cat_q} outside {area['area_name']}")
                 dic_benchmark["category_query"].append(cat_q)
-                dic_benchmark["area_index"].append(area.name)
+                dic_benchmark["area_index"].append(area.index)
                 dic_benchmark["area_name"].append(area["area_name"])
                 dic_benchmark["area_geometry"].append(area.geometry)
                 dic_benchmark["function"].append("outside_area")
@@ -78,6 +78,5 @@ def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42
                 dic_benchmark["results_poi_name"].append(list(results.poi_name))
                 dic_benchmark["results_poi_dist"].append(list(results["dist"]))
                 dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
-
-
+                dic_benckmark["anchors"].append([("area", area.index)])
     return pd.DataFrame(dic_benchmark)

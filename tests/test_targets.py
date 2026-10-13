@@ -167,6 +167,27 @@ def test_get_ellypse_returns_five_finite_numbers(ellypses, template,
         )
 
 
+@pytest.mark.parametrize("template", [pytest.param(t, id=t.name)
+                                      for t in TEMPLATE_REGISTRY])
+def test_every_ellipse_inclination_uses_the_same_convention(ellypses, template,
+                                                            run_template):
+    """L'inclinaison rendue est toujours dans [0, 180[, quelle que soit la branche.
+
+    C'est l'inclinaison d'un *axe* : θ et θ+180 décrivent la même ellipse. Trois
+    branches la calculaient par `atan2` sur 360°, si bien que la même géométrie
+    recevait deux cibles selon l'ordre de tirage des ancres de `between_ab_sql`
+    ou le sens de numérisation du way OSM d'`opposite_side` — un demi-tour tiré
+    à pile ou face, que le modèle ne peut qu'apprendre par cœur. Deux conventions
+    dans la même colonne ne se voient pas à la lecture d'un échantillon : il faut
+    les interdire ici.
+    """
+    bench = run_template(template)
+    for i, row in bench.iterrows():
+        inclinaison = ellypses.get_ellypse(row)[4]
+        assert 0.0 <= inclinaison < 180.0, (
+            f"{template.name} ligne {i} : inclinaison {inclinaison} hors de [0, 180[")
+
+
 def test_near_metric_ellipse_is_exactly_the_announced_disc(ellypses,
                                                            run_template):
     """« à moins de d mètres » : l'ellipse est le disque de rayon d, centré.

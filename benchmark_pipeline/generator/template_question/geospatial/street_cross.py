@@ -94,6 +94,7 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
             dic_benchmark["results_poi_name"].append(list(results.poi_name))
             dic_benchmark["results_poi_dist"].append(list(results.dist))
             dic_benchmark["results_poi_rank"].append(list(results["rank"]))
+            dic_benckmark["anchors"].append([("street", id_street_a), ("street", id_street_b)])
         else: continue
 
     return pd.DataFrame(dic_benchmark)

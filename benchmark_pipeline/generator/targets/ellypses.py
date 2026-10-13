@@ -14,16 +14,12 @@ def get_ellypse(row):
     Returns:
         tuple[float, float, float, float, float]: décalage x et y du centre par
             rapport au point de référence de la question, demi-axe u, demi-axe v,
-            inclinaison de u en degrés trigonométriques.
+            inclinaison de u en degrés trigonométriques dans [0, 180[.
 
     Raises:
         ValueError: valeur de `function` inconnue.
     """
-    # Longueurs en mètres Lambert-93. À inclinaison nulle, u porte les x et v les y.
-    # Le point de référence dépend du type : l'ancre pour les questions de point, le
-    # milieu de A-B pour `between`, le centroïde de la rue pour `along`, le
-    # croisement pour `cross`, le POI de référence pour `opposite_side`, le
-    # centroïde de la zone pour les `*_area`.
+
     def azimut_et_longueur(geom):
         ligne = geom.geoms[0] if geom.geom_type == "MultiLineString" else geom
         (x0, y0), (x1, y1) = ligne.coords[0], ligne.coords[-1]
@@ -42,23 +38,20 @@ def get_ellypse(row):
         Returns:
             tuple: centre x, centre y, demi-axe u, demi-axe v, inclinaison en degrés.
         """
-        n = len(points)
-        moyenne_x = sum(x for x, _ in points) / n
-        moyenne_y = sum(y for _, y in points) / n
-        # Covariance 2x2, puis son vecteur propre dominant par la forme fermée :
-        # l'ordre des tronçons d'une MultiLineString n'intervient nulle part.
-        var_x = sum((x - moyenne_x) ** 2 for x, _ in points) / n
-        var_y = sum((y - moyenne_y) ** 2 for _, y in points) / n
-        cov = sum((x - moyenne_x) * (y - moyenne_y) for x, y in points) / n
-        angle = 0.5 * math.atan2(2 * cov, var_x - var_y)
+        (x0, y0), (x1, y1) = points[0], points[-1]
+        centre_x, centre_y = (x0 + x1) / 2, (y0 + y1) / 2
+        dx, dy = x1 - x0, y1 - y0
+        demi_u = math.hypot(dx, dy) / 2
+        angle = math.atan2(dy, dx)
+        demi_v = max(abs(-(x - centre_x) * math.sin(angle) + (y - centre_y) * math.cos(angle))
+                        for x, y in points)
 
-        projections_u = [(x - moyenne_x) * math.cos(angle) + (y - moyenne_y) * math.sin(angle)
-                         for x, y in points]
-        projections_v = [-(x - moyenne_x) * math.sin(angle) + (y - moyenne_y) * math.cos(angle)
-                         for x, y in points]
-        demi_u = (max(projections_u) - min(projections_u)) / 2
-        demi_v = (max(projections_v) - min(projections_v)) / 2
-        return moyenne_x, moyenne_y, demi_u, demi_v, math.degrees(angle)
+        inclinaison = math.degrees(angle)
+        if inclinaison > 90:
+            inclinaison -= 180
+        elif inclinaison <= -90:
+            inclinaison += 180
+        return centre_x, centre_y, demi_u, demi_v, inclinaison
 
     fonction = row["function"]
 
@@ -81,23 +74,26 @@ def get_ellypse(row):
     if fonction == "towards_b_sql":
         angle = math.atan2(row["anchor_b_y"] - row["anchor_y"],
                            row["anchor_b_x"] - row["anchor_x"])
+        # le sens vers B reste porté par le centre ; l'inclinaison, elle, est modulo 180
         return (500.0 * math.cos(angle), 300.0 * math.sin(angle),
-                500.0, 300.0, math.degrees(angle))
+                500.0, 300.0, math.degrees(angle) % 180.0)
 
     if fonction == "between_ab_sql":
         dx_ab = row["anchor_b_x"] - row["anchor_a_x"]
         dy_ab = row["anchor_b_y"] - row["anchor_a_y"]
+        # l'ellipse est symétrique en A/B : sans le repli, échanger les deux ancres
+        # donnerait deux cibles à 180° d'écart pour exactement la même géométrie
         return (0.0, 0.0, math.hypot(dx_ab, dy_ab) / 2, 200.0,
-                math.degrees(math.atan2(dy_ab, dx_ab)))
+                math.degrees(math.atan2(dy_ab, dx_ab)) % 180.0)
 
     if fonction == "along_street":
         rue = row["street_geometry"]
         parties = list(rue.geoms) if rue.geom_type == "MultiLineString" else [rue]
         sommets = [point for partie in parties for point in partie.coords]
-        centre_x, centre_y, demi_u, _, inclinaison = ellipse_englobante(sommets)
+        centre_x, centre_y, demi_u, _, inclinaison = ellipse_englobante([sommets[0], sommets[-1]])
         centroide = rue.centroid
-        # Le petit axe reste la largeur de bande utile, pas la sinuosité de la rue.
-        return (centre_x - centroide.x, centre_y - centroide.y, demi_u, 100.0, inclinaison)
+        return (centre_x - centroide.x, centre_y - centroide.y, demi_u, 100.0,
+                inclinaison % 180.0)
 
     if fonction == "cross_streets":
         return (0.0, 0.0, 200.0, 200.0, 0.0)
@@ -113,8 +109,10 @@ def get_ellypse(row):
         cote = ((poi_y.x - projete.x) * math.cos(normale)
                 + (poi_y.y - projete.y) * math.sin(normale))
         signe = -1.0 if cote >= 0 else 1.0
+        # seule la valeur rendue est repliée : `normale` garde le signe brut, dont
+        # dépend le côté de la rue visé
         return (signe * 40.0 * math.cos(normale), signe * 40.0 * math.sin(normale),
-                80.0, 40.0, azimut)
+                80.0, 40.0, azimut % 180.0)
 
     if fonction == "pois_inside_area":
         demi_largeur, demi_hauteur = demi_emprise(row["area_geometry"])

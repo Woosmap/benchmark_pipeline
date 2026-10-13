@@ -10,6 +10,7 @@ class BenchmarkConfig:
     ratio_test: float
     ratio_features: dict[int, float] | None
     ratio_category: dict[str, float] | None
+    rows_target: list[str]
     nb_hard: int
     nb_unmatches: int
     seed: int

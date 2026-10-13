@@ -82,4 +82,5 @@ def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
         dic_benchmark["results_poi_name"].append(list(results.poi_name))
         dic_benchmark["results_poi_dist"].append(list(results.dist))
         dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
+        dic_benckmark["anchors"].append([("point", anchor.poi_id)])
     return pd.DataFrame(dic_benchmark)

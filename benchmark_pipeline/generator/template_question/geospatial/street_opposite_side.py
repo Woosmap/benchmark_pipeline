@@ -29,11 +29,11 @@ def side_of_street(street_geom, pt):
         rapport au mauvais tronçon. Projeter sur le tronçon le plus proche de `pt`.
     """
     s = street_geom.geoms[0] if street_geom.geom_type == "MultiLineString" else street_geom
-    t = s.project(pt)                                    # abscisse curviligne du projeté
-    p0 = s.interpolate(max(t - 5.0, 0))                  # deux points encadrant, pour la tangente
+    t = s.project(pt)
+    p0 = s.interpolate(max(t - 5.0, 0))
     p1 = s.interpolate(min(t + 5.0, s.length))
     cross = ((p1.x - p0.x) * (pt.y - p0.y)
-             - (p1.y - p0.y) * (pt.x - p0.x))            # produit vectoriel 2D
+             - (p1.y - p0.y) * (pt.x - p0.x))
     return 1.0 if cross >= 0 else -1.0
 
 def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
@@ -66,17 +66,11 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
     s = street_geom.geoms[0] if street_geom.geom_type == "MultiLineString" else street_geom
     side_y = side_of_street(s, poi_y_geom)
     t_y = s.project(poi_y_geom)
-
-    # L'index spatial écarte d'emblée les POIs trop éloignés de la rue : le calcul
-    # de côté ne porte plus que sur les candidats admissibles, pas sur toute la
-    # catégorie. `dwithin` donne exactement le filtre `cross <= max_cross`.
     sub = df[df["category"] == cat]
     proches = np.sort(sub.sindex.query(s, predicate="dwithin", distance=max_cross))
     sub = sub.iloc[proches]
     if sub.empty:
         return pd.DataFrame(columns=["poi_id", "poi_name", "cross", "along", "score", "rank"])
-
-    # Même géométrie que `side_of_street`, mais sur tout le lot en une fois.
     pts = sub.geometry.values
     along = shapely.line_locate_point(s, pts)
     p0 = shapely.line_interpolate_point(s, np.maximum(along - 5.0, 0))
@@ -86,7 +80,6 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
     px, py = shapely.get_x(pts), shapely.get_y(pts)
     side = np.where((x1 - x0) * (py - y0) - (y1 - y0) * (px - x0) >= 0, 1.0, -1.0)
     cross = shapely.distance(pts, s)
-
     garde = (side != side_y) & (cross <= max_cross) & (np.abs(along - t_y) <= max_along)
     out = pd.DataFrame({
         "poi_id": sub["poi_id"].values[garde],
@@ -123,10 +116,6 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
     n_queries_per_stratum = nb_q // len(list_cat)
-
-    # "MultiLineString", pas "MultiString" : la coquille écartait silencieusement
-    # toutes les rues en plusieurs tronçons, que `side_of_street` sait pourtant
-    # traiter. Aucun filtre ne levait, le tirage était simplement amputé.
     lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiLineString"])]
 
     for cat_q in list_cat:
@@ -135,9 +124,6 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
         while n < n_queries_per_stratum and tries < max_tries:
             tries += 1
             street = lines.loc[rng.choice(lines.index)]
-
-            # Sans l'index, cette ligne mesurait la distance des 19 000 POIs à la
-            # rue, à chaque essai — jusqu'à 200 fois par catégorie.
             proches = np.sort(df_osm.sindex.query(street.geometry, predicate="dwithin", distance=40))
             near = df_osm.iloc[proches]
             if near.empty:
@@ -148,7 +134,6 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             results = results[results["poi_id"] != poi_y["poi_id"]]
             if results.empty:
                 continue
-
             dic_benchmark["query"].append(f"{cat_q} across {street['street_name']} from {poi_y['poi_name']}")
             dic_benchmark["category_query"].append(cat_q)
             dic_benchmark["street_index"].append(street.name)
@@ -162,6 +147,6 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             dic_benchmark["results_poi_name"].append(list(results.poi_name))
             dic_benchmark["results_poi_dist"].append(list(results["cross"]))
             dic_benchmark["results_poi_rank"].append(list(results["rank"]))
+            dic_benckmark["anchors"].append([("street", street.name), ("point", poi_y["poi_id"])])
             n += 1
-
     return pd.DataFrame(dic_benchmark)

@@ -58,17 +58,12 @@ def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=
         else:
             results = segregate_pois(pois, area.geometry, list_direction)
             centre = area.geometry.centroid
-            # `segregate_pois` masque sans trier : le rang numérotait l'ordre
-            # d'apparition dans `df_osm`, c'est-à-dire rien. Le classement se
-            # fait ici, par distance croissante au centroïde — critère que les
-            # templates voisins emploient déjà, et seul ordre qui respecte la
-            # monotonie de `results_poi_dist` exigée par `validate_benchmark`.
             for direction, pois_direction in results.items():
                 pois_direction = pois_direction.assign(
                     dist=pois_direction.geometry.distance(centre)
                 ).sort_values("dist")
                 dic_benchmark["query"].append(f"pois at the {direction} of {area['area_name']}")
-                dic_benchmark["area_index"].append(area.name)
+                dic_benchmark["area_index"].append(area.index)
                 dic_benchmark["area_name"].append(area["area_name"])
                 dic_benchmark["area_geometry"].append(area.geometry)
                 dic_benchmark["function"].append("segregate_pois")
@@ -79,6 +74,5 @@ def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=
                 dic_benchmark["results_poi_name"].append(list(pois_direction.poi_name))
                 dic_benchmark["results_poi_dist"].append(list(pois_direction["dist"]))
                 dic_benchmark["results_poi_rank"].append(list(range(1, len(pois_direction) + 1)))
-
-
+                dic_benckmark["anchors"].append([("area", area.index)])
     return pd.DataFrame(dic_benchmark)

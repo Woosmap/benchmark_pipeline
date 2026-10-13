@@ -94,8 +94,8 @@ def make_rows(
         n_hard: int,
         nb_unmatches: int,
         is_test: bool = False,
-        colonnes_cibles: Sequence[str] = (),
-        colonne_question: str = "query_geo_semantic",
+        rows_target: Sequence[str] = (),
+        colonne_question: str = "query_texte",
         colonne_pois: str = "results_features_pois_id",
         colonne_pois_spatiaux: str = "results_poi_id",
     ) -> DataFrame:
@@ -104,14 +104,14 @@ def make_rows(
     Args:
         df_question: questions composites, colonnes `features`, `values`, plus
             celles désignées par `colonne_question`, `colonne_pois` et
-            `colonnes_cibles`.
+            `rows_target`.
         df_osm: corpus de POI.
         positions: positions des questions à traiter.
         rng: générateur numpy.
         n_hard: négatifs difficiles tirés par question.
         nb_unmatches: nombre de contraintes qu'un négatif difficile peut rater.
         is_test: sans négatifs difficiles.
-        colonnes_cibles: colonnes de `df_question` recopiées telles quelles dans
+        rows_target: colonnes de `df_question` recopiées telles quelles dans
             chaque ligne, par exemple `("ellypse",)`.
         colonne_question: colonne portant l'énoncé. `query_geo_semantic` est
             l'énoncé enrichi de la contrainte d'attribut, `query` le spatial seul.
@@ -122,21 +122,18 @@ def make_rows(
             qui satisfont la relation spatiale mais pas tous les attributs.
 
     Returns:
-        DataFrame avec `index`, `question`, `pois`, les `colonnes_cibles`, et
+        DataFrame avec `index`, `question`, `pois`, les `rows_target`, et
             `hard_pois` hors test.
     """
     rows = []
     for pos in positions:
         ligne = df_question.iloc[pos]
-        # `dict.fromkeys` et non `set` : les deux dédoublonnent, mais un `set`
-        # rend ses éléments dans l'ordre de ses cases de hachage, ce qui détruit
-        # l'ordre de pertinence spatiale que le générateur a pris soin de poser.
         pois = list(dict.fromkeys(ligne[colonne_pois]))
         row = {
             "index": pos,
-            "question": ligne[colonne_question],
+            "query_texte": ligne[colonne_question],
             "pois": pois,
-            **{colonne: ligne[colonne] for colonne in colonnes_cibles},
+            **{colonne: ligne[colonne] for colonne in rows_target},
         }
         if not is_test:
             contraintes = dict(zip(ligne["features"], ligne["values"]))
@@ -154,6 +151,7 @@ def format_composit_samples(
         df_question: DataFrame, 
         df_osm: DataFrame, 
         rng: Generator,
+        rows_target: list[str],
         ratio_test: float = 0.1,
         ratio_features: dict[int, float] | None = None,
         ratio_category: dict[str, float] | None = None,
@@ -162,6 +160,6 @@ def format_composit_samples(
     ) -> tuple[list[Batch], NDArray]:
 
     train, test = split_train_test(len(df_question), ratio_test, rng)
-    train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches)
-    test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, is_test=True)
+    train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches, rows_target=rows_target)
+    test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, rows_target=rows_target, is_test=True)
     return train_set, test_set

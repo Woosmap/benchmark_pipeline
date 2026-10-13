@@ -65,4 +65,5 @@ def make_question_street_along(df_osm, df_streets, max_dist=50, min_length=500, 
         dic_benchmark["results_poi_name"].append(list(results.poi_name))
         dic_benchmark["results_poi_dist"].append(list(results.dist))
         dic_benchmark["results_poi_rank"].append(list(results["rank"]))
+        dic_benckmark["anchors"].append([("street", id_street)])
     return pd.DataFrame(dic_benchmark)
