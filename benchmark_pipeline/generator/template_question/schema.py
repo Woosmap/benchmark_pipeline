@@ -3,18 +3,18 @@
 Un benchmark est un `DataFrame` « une ligne = une question ». Chaque ligne porte
 deux choses :
 
-* un **contexte**, qui décrit la question posée — la catégorie cherchée
-  (`category_query`), l'énoncé en langue naturelle (`query`), et selon le
-  template une ancre ponctuelle (`anchor_*`), une zone (`area_*`) ou une rue
-  (`street_*`) ;
+* un **contexte**, qui décrit la question posée — l'énoncé en langue
+  naturelle (`query`) et, selon le template, une ancre ponctuelle (`anchor_*`),
+  une zone (`area_*`) ou une rue (`street_*`). Trois templates ajoutent la
+  catégorie cherchée (`category_query`) ; les neuf autres demandent « pois »
+  sans filtrer, et ne la publient pas ;
 * une **vérité terrain**, sous forme de listes parallèles `results_poi_id`,
   `results_poi_name`, `results_poi_dist`, `results_poi_rank`, ordonnées par
   pertinence décroissante.
 
-Ce module est la source de vérité unique sur ce schéma : il alimente à la fois la
-paramétrisation des tests (`tests/`) et l'écriture sur disque
-(`src.utils.dataset_io`), pour qu'il n'y ait pas deux listes de colonnes à
-maintenir en parallèle.
+Ce module est la source de vérité unique sur ce schéma : il alimente la
+paramétrisation des tests (`tests/`), pour qu'il n'y ait pas deux listes de
+colonnes à maintenir en parallèle.
 """
 
 from __future__ import annotations
@@ -27,7 +27,16 @@ import pandas as pd
 # --------------------------------------------------------------------------- #
 
 #: Colonnes présentes dans tout benchmark, quel que soit le template.
-BENCHMARK_CORE_COLUMNS = ("query", "category_query", "function")
+#:
+#: `category_query` n'en fait plus partie : seuls `area_border`, `area_outside`
+#: et `street_opposite_side` filtrent encore par catégorie. Les neuf autres
+#: demandent « pois » et ne publient pas la colonne — l'exiger partout faisait
+#: échouer `validate_benchmark` sur la colonne manquante, qui s'arrêtait là sans
+#: vérifier les onze autres règles.
+BENCHMARK_CORE_COLUMNS = ("query", "function")
+
+#: Colonnes vérifiées quand elles sont là, ignorées sinon.
+OPTIONAL_CONTEXT_COLUMNS = ("category_query",)
 
 #: Les listes parallèles de la vérité terrain. `results_poi_id` et
 #: `results_poi_name` sont exigées partout ; `dist` et `rank` sont vérifiées
@@ -41,8 +50,9 @@ RESULT_LIST_COLUMNS = (
 
 REQUIRED_RESULT_COLUMNS = ("results_poi_id", "results_poi_name")
 
-#: Colonnes contenant des géométries shapely. Elles ne survivent pas à un
-#: aller-retour parquet sans passer par du WKB, cf. `src.utils.dataset_io`.
+#: Colonnes contenant des géométries shapely. Elles ne survivent pas telles
+#: quelles à un aller-retour parquet : tout code qui enregistre un benchmark
+#: doit les encoder en WKB au passage.
 GEOMETRY_COLUMNS = (
     "area_geometry",
     "street_geometry",
@@ -53,7 +63,8 @@ GEOMETRY_COLUMNS = (
 
 #: Colonnes qui désignent un POI servant d'ancre à la question. Une ancre ne
 #: doit jamais figurer dans sa propre réponse.
-ANCHOR_ID_COLUMNS = ("anchor_index", "point_b_index", "poi_y_id")
+ANCHOR_ID_COLUMNS = ("anchor_index", "anchor_a_index", "anchor_b_index",
+                     "poi_y_id")
 
 
 # --------------------------------------------------------------------------- #
@@ -96,10 +107,18 @@ class Template:
 
 _PKG = f"{__package__}.geospatial"
 
+# `same_cat` a été retirée : plus aucun template ne la produit depuis que les
+# questions de point ont cessé de filtrer par catégorie.
 _ANCHOR_COLS = ("anchor_index", "anchor_name", "anchor_category",
-                "anchor_x", "anchor_y", "same_cat")
-_POINT_B_COLS = ("point_b_index", "point_b_name", "point_b_category",
-                 "point_b_x", "point_b_y")
+                "anchor_x", "anchor_y")
+# `point_towards` a une ancre et un second point, `point_between` deux ancres
+# symétriques. Les deux nomment le second point `anchor_b_*` ; le registre a
+# longtemps annoncé `point_b_*`, vocabulaire qu'aucun générateur n'a jamais
+# produit.
+_ANCHOR_A_COLS = ("anchor_a_index", "anchor_a_name", "anchor_a_category",
+                  "anchor_a_x", "anchor_a_y")
+_ANCHOR_B_COLS = ("anchor_b_index", "anchor_b_name", "anchor_b_category",
+                  "anchor_b_x", "anchor_b_y")
 _AREA_COLS = ("area_index", "area_name", "area_geometry")
 
 #: Les 12 templates de type A. L'ordre est celui de la progression logique :
@@ -121,11 +140,12 @@ TEMPLATE_REGISTRY = (
     ),
     Template(
         "point_towards", f"{_PKG}.point_towards", "make_question_point_towards",
-        ("df_osm",), _ANCHOR_COLS + _POINT_B_COLS, label_column="anchor_name",
+        ("df_osm",), _ANCHOR_COLS + _ANCHOR_B_COLS, label_column="anchor_name",
     ),
     Template(
         "point_between", f"{_PKG}.point_between", "make_question_point_between",
-        ("df_osm",), _ANCHOR_COLS + _POINT_B_COLS, label_column="anchor_name",
+        ("df_osm",), _ANCHOR_A_COLS + _ANCHOR_B_COLS,
+        label_column="anchor_a_name",
     ),
     Template(
         "area_inside", f"{_PKG}.area_inside", "make_question_area_inside",
@@ -298,7 +318,8 @@ def validate_benchmark(bench, df_osm=None, dist_is_ranking_key=True,
         query = row["query"]
         if not isinstance(query, str) or not query.strip():
             problems.append(f"{where} : query vide")
-        elif str(row["category_query"]) not in query:
+        elif ("category_query" in bench.columns
+              and str(row["category_query"]) not in query):
             problems.append(
                 f"{where} : query ne mentionne pas category_query="
                 f"{row['category_query']!r}"
@@ -327,7 +348,11 @@ def validate_benchmark(bench, df_osm=None, dist_is_ranking_key=True,
                 f"(benchmark {got!r}, corpus {exp!r}) — {len(mismatched)} cas"
             )
 
-        # 9. tout résultat est de la catégorie demandée
+        # 9. tout résultat est de la catégorie demandée — seulement pour les
+        # trois templates qui en annoncent une ; les neuf autres mélangent les
+        # catégories par construction, ce n'est pas une incohérence.
+        if "category_query" not in bench.columns:
+            continue
         wrong_cat = [(i, cat_by_id[i]) for i in ids
                      if cat_by_id[i] != row["category_query"]]
         if wrong_cat:

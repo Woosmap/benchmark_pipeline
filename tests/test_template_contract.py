@@ -23,13 +23,16 @@ from benchmark_pipeline.generator.template_question.schema import (
     RESULT_LIST_COLUMNS,
     TEMPLATE_REGISTRY,
     _as_list,
-    validate_benchmark,
 )
+from tests.conftest import CATEGORY_FREE_TEMPLATES, coherence_problems
 from tests.known_defects import (
     BROKEN_TEMPLATES,
     IMPORT_ERRORS,
     INCOHERENT_TEMPLATES,
+    INCOMPLETE_RESULT_LISTS,
     MISDECLARED_CONTEXT_COLUMNS,
+    MISSING_LABEL_COLUMN,
+    STALE_FUNCTION_NAMES,
     UNANSWERABLE_TEMPLATES,
     UNPLOTTABLE_TEMPLATES,
     merge_reasons,
@@ -40,10 +43,12 @@ def for_each_template(*defect_tables):
     """Paramètre un test sur les 12 templates, xfail pour ceux qui échoueront.
 
     Les marqueurs sont posés **par test**, pas une fois pour le module : un
-    template peut très bien s'importer et ne casser qu'à l'appel du générateur
-    (c'est le cas des quatre `area_*`). Un `xfail` global serait alors un XPASS
-    sur `test_module_imports` et ferait échouer la suite pour de mauvaises
-    raisons. Chaque test déclare donc les familles de défauts qui le concernent.
+    template peut très bien s'importer et ne casser qu'à l'appel du générateur.
+    Un `xfail` global serait alors un XPASS sur `test_module_imports` et ferait
+    échouer la suite pour de mauvaises raisons. Chaque test déclare donc les
+    familles de défauts qui le concernent — et, quand une famille est plus large
+    que ce que le test constate, son sous-ensemble (`INCOMPLETE_RESULT_LISTS`,
+    `MISSING_LABEL_COLUMN`) plutôt que la famille entière.
     """
     expected_failures = merge_reasons(*defect_tables)
     cases = [
@@ -93,7 +98,12 @@ def test_declared_columns_present(template, run_template):
     """Toutes les colonnes annoncées par le template sont là.
 
     Le registre est la source de vérité : s'il promet `area_geometry`, la
-    visualisation et l'enregistrement comptent dessus.
+    visualisation et l'enregistrement comptent dessus. Neuf des douze templates
+    échouaient ici depuis f1be9c1, parce que le registre exigeait partout
+    `category_query` et `same_cat` que les générateurs avaient cessé de
+    produire ; les deux colonnes ont été retirées du schéma. Ne restent que
+    `point_towards` et `point_between`, dont le registre annonce des `point_b_*`
+    là où ils publient des `anchor_b_*`.
     """
     bench = run_template(template)
     expected = (BENCHMARK_CORE_COLUMNS + REQUIRED_RESULT_COLUMNS
@@ -105,7 +115,7 @@ def test_declared_columns_present(template, run_template):
     )
 
 
-@for_each_template(BROKEN_TEMPLATES, INCOHERENT_TEMPLATES)
+@for_each_template(BROKEN_TEMPLATES, INCOMPLETE_RESULT_LISTS)
 def test_result_lists_complete(template, run_template):
     """Les quatre listes de vérité terrain sont publiées.
 
@@ -121,12 +131,16 @@ def test_result_lists_complete(template, run_template):
     )
 
 
-@for_each_template(BROKEN_TEMPLATES)
+@for_each_template(BROKEN_TEMPLATES, STALE_FUNCTION_NAMES)
 def test_function_column_names_a_real_callable(template, run_template):
     """La colonne `function` désigne une fonction qui existe vraiment.
 
     C'est la seule trace, dans le benchmark enregistré, de la manière dont la
     vérité terrain a été calculée. Un nom périmé rend le jeu inauditable.
+
+    Ces mêmes chaînes pilotent l'aiguillage de `targets.ellypses.get_ellypse` :
+    les renommer demande de toucher les deux côtés en même temps, ce que vérifie
+    `test_targets.test_every_function_value_has_an_ellipse_branch`.
     """
     bench = run_template(template)
     module = importlib.import_module(template.module)
@@ -149,15 +163,16 @@ def test_benchmark_is_coherent(template, run_template, df_osm):
     `poi_id`, appariement id↔nom, catégorie des résultats, distances finies et
     croissantes, exclusion de l'ancre, mention de la catégorie dans l'énoncé.
 
+    Passe par `conftest.coherence_problems`, qui applique `dist_is_ranking_key`
+    et `allow_empty` propres au template. La catégorie, elle, n'est vérifiée que
+    sur les trois templates qui publient `category_query` : les neuf autres
+    mélangent les catégories par construction.
+
     Les questions sans réponse sont tolérées ici : elles sont inévaluables, pas
     incohérentes, et `test_no_unanswerable_questions` s'en charge séparément.
     """
     bench = run_template(template)
-    problems = validate_benchmark(
-        bench, df_osm,
-        dist_is_ranking_key=template.dist_is_ranking_key,
-        allow_empty=True,
-    )
+    problems = coherence_problems(bench, template, df_osm)
     assert not problems, (
         f"{len(problems)} incohérence(s) dans {template.name} :\n  - "
         + "\n  - ".join(problems[:15])
@@ -165,7 +180,7 @@ def test_benchmark_is_coherent(template, run_template, df_osm):
     )
 
 
-@for_each_template(BROKEN_TEMPLATES, MISDECLARED_CONTEXT_COLUMNS)
+@for_each_template(BROKEN_TEMPLATES, MISSING_LABEL_COLUMN)
 def test_query_mentions_its_context(template, run_template):
     """L'énoncé nomme bien l'objet sur lequel il porte.
 
@@ -209,6 +224,34 @@ def test_no_unanswerable_questions(template, run_template):
     )
 
 
+@for_each_template(BROKEN_TEMPLATES)
+def test_category_free_templates_say_so_in_their_query(template, run_template):
+    """Un template sans `category_query` demande bien « pois », explicitement.
+
+    Garde-fou sur la table `conftest.CATEGORY_FREE_TEMPLATES`, qui relâche un
+    contrôle de `validate_benchmark` : il faut qu'elle décrive les générateurs
+    et non l'inverse. Deux sens vérifiés — un template recensé sans catégorie ne
+    doit pas publier `category_query`, et un template qui n'y est pas doit la
+    publier.
+    """
+    bench = run_template(template)
+    sans_categorie = template.name in CATEGORY_FREE_TEMPLATES
+
+    assert sans_categorie != ("category_query" in bench.columns), (
+        f"{template.name} est {'recensé' if sans_categorie else 'absent'} de "
+        f"CATEGORY_FREE_TEMPLATES mais "
+        f"{'publie' if not sans_categorie else 'ne publie pas'} "
+        f"`category_query` : la table de conftest est périmée"
+    )
+    if sans_categorie:
+        sans_pois = [q for q in bench["query"] if "pois" not in str(q)]
+        assert not sans_pois, (
+            f"{len(sans_pois)} énoncé(s) de {template.name} ne disent pas "
+            f"« pois » alors que le template est recensé sans catégorie ; "
+            f"ex. {sans_pois[0]!r}"
+        )
+
+
 # --------------------------------------------------------------------------- #
 # compatibilité avec la visualisation
 # --------------------------------------------------------------------------- #
@@ -222,10 +265,11 @@ def test_satisfies_plot_question_preconditions(template, run_template, df_osm):
     benchmark qui ne passe pas ces contrôles n'est pas affichable, donc pas
     relisible à l'œil.
 
-    Marqué depuis `UNPLOTTABLE_TEMPLATES` et non `INCOHERENT_TEMPLATES` : il
+    Les douze templates le satisfont, y compris les trois incohérents : il
     manque `results_poi_dist` à `area_direction`, dont `plot_question` n'a pas
-    besoin. Le marquer ici le ferait XPASS et échouer la suite pour un défaut
-    qu'il n'a pas.
+    besoin, et `point_near_metric` duplique des `poi_id` sans dupliquer les
+    rangs. `UNPLOTTABLE_TEMPLATES` est donc vide et ce test est une garantie,
+    pas un constat.
     """
     bench = run_template(template)
     geo_index = df_osm.set_index("poi_id").index

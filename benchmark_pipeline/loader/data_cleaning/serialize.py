@@ -1,6 +1,6 @@
 import pandas as pd
 
-from benchmark_pipeline.config import NAME_TAGS, CATEGORY_TAGS
+from benchmark_pipeline.config import CATEGORY_TAGS, NAME_TAGS
 
 
 def _clean(v) -> str | None:
@@ -62,8 +62,7 @@ def serialize_poi(
         if pc:
             parts.append(pc)
  
-    if include_context:
-        if ctx := _clean(row.get(context_col)):
+    if include_context and (ctx := _clean(row.get(context_col))):
             parts.append(ctx)
  
     doc = " ".join(parts)

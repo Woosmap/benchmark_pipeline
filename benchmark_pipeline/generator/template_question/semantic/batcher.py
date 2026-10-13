@@ -3,11 +3,9 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, TypedDict
 
-import numpy as np
 from numpy.random import Generator
 from numpy.typing import NDArray
 from pandas import DataFrame, Series
-
 
 PoiId = int | tuple
 
@@ -88,65 +86,6 @@ def split_train_test(
     n_test = int(n_questions * ratio_test)
     return positions[n_test:], positions[:n_test]
 
-def strates(df_question: DataFrame, par: str) -> NDArray:
-    """La valeur de `par` pour chaque question.
-
-    Args:
-        df_question: questions, colonnes `nb_feature` et `features`.
-        par: `"category"`, ou le nom d'une colonne de `df_question`.
-
-    Returns:
-        Un tableau objet aligné sur `df_question`.
-    """
-    if par == "category":
-        # La catégorie n'est pas une colonne mais une contrainte : les questions
-        # qui ne la portent pas tombent dans la strate `None`.
-        return np.array([c.get("category") for c in df_question["features"]], dtype=object)
-    return df_question[par].to_numpy()
-
-def stratify(
-        df_question: DataFrame,
-        positions: NDArray,
-        ratios: dict[Any, float] | None,
-        rng: Generator,
-        par: str = "nb_feature",
-    ) -> NDArray:
-    """Sous-ensemble de questions respectant les proportions demandées sur `par`.
-
-    Args:
-        df_question: questions, colonnes `nb_feature` et `features`.
-        positions: positions candidates.
-        ratios: valeur de `par` -> part du total, par exemple {1: 0.4, 2: 0.4, 3: 0.2}
-            pour `nb_feature`, ou {"restaurant": 0.25, "cafe": 0.25, ...} pour
-            `category`. Une valeur absente du dict est écartée. `None` ou `{}`
-            rend toutes les positions, sans rien écarter ni consommer `rng`.
-        rng: générateur numpy.
-        par: axe de stratification — `"nb_feature"`, `"category"`, ou toute
-            colonne de `df_question`.
-
-    Returns:
-        Les positions retenues, mélangées.
-    """
-    if not ratios:
-        return np.asarray(positions, dtype=int)
-
-    cles = strates(df_question, par)
-    pools = {valeur: positions[cles[positions] == valeur] for valeur in ratios}
-
-    # Combien de questions au total peut-on tirer sans casser les proportions ?
-    # C'est la strate la plus pauvre qui décide.
-    n_total = min([len(pools[valeur]) / ratio
-                   for valeur, ratio in ratios.items() if ratio > 0], default=0)
-
-    selected = []
-    for valeur, ratio in ratios.items():
-        taille = int(n_total * ratio)
-        selected += list(rng.choice(pools[valeur], size=taille, replace=False))
-
-    selected = np.array(selected, dtype=int)
-    rng.shuffle(selected)   # sinon les batchs sortent triés par difficulté
-    return selected
-
 def make_rows(
         df_question: DataFrame,
         df_osm: DataFrame,
@@ -171,7 +110,10 @@ def make_rows(
     """
     rows = []
     for pos in positions:
-        pois = list(set(df_question["pois"].iloc[pos]))
+        # `dict.fromkeys` et non `set` : les deux dédoublonnent, mais un `set`
+        # rend ses éléments dans l'ordre de ses cases de hachage, ce qui détruit
+        # l'ordre de pertinence des POIs. Cf. `composite/format_samples.py`.
+        pois = list(dict.fromkeys(df_question["pois"].iloc[pos]))
         if is_test:
             rows.append({
                 "index": pos,
@@ -188,52 +130,6 @@ def make_rows(
                 "hard_pois": hard_pois,
             })
     return DataFrame(rows)
-
-def index_ground_truth(df_questions: DataFrame) -> dict[tuple[str, ...], list[PoiId]]:
-    """Question (en tuple) -> ses POI pertinents.
-
-    Args:
-        df_questions: colonnes `question` et `pois`.
-
-    Returns:
-        Dédoublonné, ordre d'origine conservé.
-    """
-    return {tuple(q): list(dict.fromkeys(pois))
-            for q, pois in zip(df_questions["question"], df_questions["pois"])}
-
-def change_answer_batch(
-        batch: Batch, 
-        df_questions: DataFrame, 
-        nb_answers: int,
-        rng: Generator,
-    ) -> Batch:
-    """Rejoue le même batch avec d'autres réponses.
-
-    Args:
-        batch: batch produit par `make_batches`.
-        df_questions: vérité terrain, colonnes `question` et `pois`.
-        n_answers: nombre de réponses conservées par question.
-        rng: à passer pour que l'augmentation soit reproductible.
-
-    Returns:
-        Un nouveau batch ; `batch` n'est pas modifié.
-    """
-    ground = index_ground_truth(df_questions)
-
-    questions, poi_ids = batch["questions"], batch["poi_ids"]
-    verites = [set(ground[tuple(q)]) for q in questions]
-    reponses = []
-
-    for question in questions:
-        candidats = ground[tuple(question)]
-        reponses.extend(tirer(rng, candidats, min(nb_answers, len(candidats))))
-    poi_ids_out = list(dict.fromkeys(reponses))
-    pertinents = set().union(*verites) if verites else set()
-
-    deja = set(poi_ids_out)
-    poi_ids_out += [poi for poi in poi_ids
-                    if poi not in deja and poi not in pertinents]
-    return {"questions": list(questions), "poi_ids": poi_ids_out}
 
 
 def make_benchmark_question(
