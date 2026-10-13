@@ -8,7 +8,7 @@ Le contrat de colonnes est celui de `benchmark_pipeline/loader/osm_loaders.py`,
 qui est la direction voulue du projet :
 
 * `df_osm`     → `poi_id`, `poi_name`, `category`, `x`, `y`, `geometry`
-* `df_area`    → `area_name`, `geometry`
+* `df_area`    → `id_area`, `area_name`, `geometry`
 * `df_streets` → `id_street`, `street_name`, `geometry`
 
 Tout est en **EPSG:2154** (Lambert-93), donc les distances sont euclidiennes et
@@ -125,7 +125,7 @@ def build_df_area():
     `df_area.geometry.iloc[0]` et comptent sur ses 400×400 m.
 
     Returns:
-        GeoDataFrame: `area_name`, `geometry`, en EPSG:2154.
+        GeoDataFrame: `id_area`, `area_name`, `geometry`, en EPSG:2154.
     """
     rows = [
         # couvre le quadrant bas-gauche de la grille : 160 000 m²
@@ -146,7 +146,11 @@ def build_df_area():
                 "area_name": f"Quartier {ix}-{iy}",
                 "geometry": box(x0, y0, x0 + QUARTIER_SIDE, y0 + QUARTIER_SIDE),
             })
-    return gpd.GeoDataFrame(rows, crs=2154)
+    df_area = gpd.GeoDataFrame(rows, crs=2154)
+    # `id_area` est l'identifiant publié par `load_area`, distinct du label
+    # d'index : c'est lui que lisent les templates et la colonne `anchors`.
+    df_area["id_area"] = df_area.index
+    return df_area[["id_area", "area_name", "geometry"]]
 
 
 def build_df_streets():

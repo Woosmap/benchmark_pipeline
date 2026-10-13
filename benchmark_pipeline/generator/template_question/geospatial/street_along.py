@@ -57,7 +57,7 @@ def make_question_street_along(df_osm, df_streets, max_dist=50, min_length=500, 
         street = df_streets.loc[id_street]
         results = along_street(df_osm, street.geometry, max_dist)
         dic_benchmark["query"].append(f"pois following {street['street_name']}")
-        dic_benchmark["street_index"].append(id_street)
+        dic_benchmark["street_index"].append(street["id_street"])
         dic_benchmark["street_name"].append(street["street_name"])
         dic_benchmark["street_geometry"].append(street.geometry)
         dic_benchmark["function"].append("along_street")
@@ -65,5 +65,7 @@ def make_question_street_along(df_osm, df_streets, max_dist=50, min_length=500, 
         dic_benchmark["results_poi_name"].append(list(results.poi_name))
         dic_benchmark["results_poi_dist"].append(list(results.dist))
         dic_benchmark["results_poi_rank"].append(list(results["rank"]))
-        dic_benckmark["anchors"].append([("street", id_street)])
+        dic_benchmark["anchors_type"].append(["street"])
+        dic_benchmark["anchors_name"].append([street["street_name"]])
+        dic_benchmark["anchors_id"].append([street["id_street"]])
     return pd.DataFrame(dic_benchmark)

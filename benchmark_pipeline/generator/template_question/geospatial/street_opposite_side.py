@@ -136,7 +136,7 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
                 continue
             dic_benchmark["query"].append(f"{cat_q} across {street['street_name']} from {poi_y['poi_name']}")
             dic_benchmark["category_query"].append(cat_q)
-            dic_benchmark["street_index"].append(street.name)
+            dic_benchmark["street_index"].append(street["id_street"])
             dic_benchmark["street_name"].append(street["street_name"])
             dic_benchmark["street_geometry"].append(street.geometry)
             dic_benchmark["poi_y_id"].append(poi_y["poi_id"])
@@ -147,6 +147,8 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             dic_benchmark["results_poi_name"].append(list(results.poi_name))
             dic_benchmark["results_poi_dist"].append(list(results["cross"]))
             dic_benchmark["results_poi_rank"].append(list(results["rank"]))
-            dic_benckmark["anchors"].append([("street", street.name), ("point", poi_y["poi_id"])])
+            dic_benchmark["anchors_type"].append(["street", "point"])
+            dic_benchmark["anchors_name"].append([street["street_name"], poi_y["poi_name"]])
+            dic_benchmark["anchors_id"].append([street["id_street"], poi_y["poi_id"]])
             n += 1
     return pd.DataFrame(dic_benchmark)

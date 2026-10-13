@@ -115,5 +115,7 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
         dic_benchmark["results_poi_name"].append(list(results.poi_name))
         dic_benchmark["results_poi_dist"].append(list(results.dist))
         dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
-        dic_benckmark["anchors"].append([("point", anchor_a.poi_id), ("point", anchor_b.poi_id)])
+        dic_benchmark["anchors_type"].append(["point", "point"])
+        dic_benchmark["anchors_name"].append([anchor.poi_name, anchor_b.poi_name])
+        dic_benchmark["anchors_id"].append([anchor.poi_id, anchor_b.poi_id])
     return pd.DataFrame(dic_benchmark)

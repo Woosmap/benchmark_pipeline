@@ -63,13 +63,13 @@ def add_area_category(area, dic_tags=AREA_TAGS):
 def load_area():
     area = ox.features_from_bbox(BBOX, tags=AREA_TAGS)
     poi_all_index = area.index.tolist()
-    area["index"] = poi_all_index
+    area["id_area"] = [int(i) for _, i in poi_all_index]
     area = area[area.geom_type.isin(["Polygon"])].to_crs(2154)
     area = area[~area.name.isna()]
     lvl = pd.to_numeric(area["admin_level"], errors="coerce")
     area = area[lvl.isna() | (lvl >= 9)]
     area = add_area_category(area)
     df_area = area.drop_duplicates(subset="name", keep="first")
-    df_area = df_area[["index", "name", "category", "geometry"]]
+    df_area = df_area[["id_area", "name", "category", "geometry"]]
     df_area = df_area.rename(columns={"name": "area_name"})
     return df_area

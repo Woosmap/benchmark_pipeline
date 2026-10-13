@@ -39,14 +39,11 @@ def make_mask(tokens_query, tokens_anchors):
     return mask
 
 def add_anchors_mask(df_question, sentence_model):
-    list_anchors = []
-    for _, row in df_question.iterrows():
-        list_anchors.append(get_anchors(row))
+    list_anchors = df_question['anchors_name']
     list_tokens_query = sentence_model.tokenizer(list(df_question["query_texte"]))["input_ids"]
     list_tokens_anchors = [sentence_model.tokenizer(anchors, add_special_tokens=False)["input_ids"] if len(anchors) else []
                            for anchors in list_anchors]
     list_mask = [make_mask(tokens_query, tokens_anchors)
                  for tokens_query, tokens_anchors in zip(list_tokens_query, list_tokens_anchors)]
-    df_question["anchors"] = list_anchors
     df_question["mask_token_anchors"] = list_mask
     return df_question

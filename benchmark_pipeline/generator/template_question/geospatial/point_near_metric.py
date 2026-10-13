@@ -77,5 +77,7 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
             dic_benchmark["results_poi_name"].append(list(result.poi_name))
             dic_benchmark["results_poi_dist"].append(list(result.dist))
             dic_benchmark["results_poi_rank"].append(list(range(1, len(result) + 1)))
-            dic_benckmark["anchors"].append([("point", anchor.poi_id)])
+            dic_benchmark["anchors_type"].append(["point"])
+            dic_benchmark["anchors_name"].append([anchor.poi_name])
+            dic_benchmark["anchors_id"].append([anchor.poi_id])
     return pd.DataFrame(dic_benchmark)
