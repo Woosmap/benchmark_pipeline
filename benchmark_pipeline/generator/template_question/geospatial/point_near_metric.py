@@ -62,7 +62,7 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
         results = near_metric_sql(df_osm, anchor.x, anchor.y, list_distance)
         results = results[results["poi_id"] != anchor.poi_id]
         for d in list_distance:
-            result = results[results["distance"] == d]
+            result = results[results["distance"] <= d]
             if result.empty:
                 continue
             dic_benchmark["query"].append(f"pois at less than {d} meters from {anchor.poi_name}")

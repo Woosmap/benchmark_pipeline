@@ -28,7 +28,7 @@ def register(
 
     DataFrame(train_set).to_parquet(save_path + "train_set.parquet")
     DataFrame(test_set).to_parquet(save_path + "test_set.parquet")
-    #df_question.to_parquet(save_path + "df_question.parquet")
-    #df_osm.to_parquet(save_path + "df_osm.parquet")
+    df_question.to_parquet(save_path + "df_question.parquet")
+    df_osm.to_parquet(save_path + "df_osm.parquet")
     with open(save_path + "config.json", "w") as f:
         json.dump(asdict(conf), f, indent=2)

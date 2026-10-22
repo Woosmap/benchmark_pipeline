@@ -5,11 +5,18 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import FEATURES
-from benchmark_pipeline.generator.template_question import geospatial  # noqa: F401
 from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import REGISTRY
+from benchmark_pipeline.generator.template_question.registry import REGISTRY
+import benchmark_pipeline.generator.template_question.geospatial 
 
-list_template = ['make_question_point_near']
+
+list_template = ['make_question_area_border',
+                 'make_question_area_inside', 'make_question_area_direction',
+                 'make_question_point_between', 'make_question_point_near_cardinal',
+                 'make_question_point_near_metric', 'make_question_point_near',
+                 'make_question_point_towards', 'make_question_street_along',
+                 'make_question_street_cross']
 MOTS_GENERIQUES = {"poi", "pois"}
 
 
@@ -137,6 +144,7 @@ def make_question_composite(
         part_avec_features=1.0,
         feature_cols=FEATURES,
         seed=42,
+        is_paraphrase=False,
     ):
     """Produit le jeu complet de questions composites.
 
@@ -166,5 +174,10 @@ def make_question_composite(
     df_geo_q = pd.concat(
         [_appeler_template(nom, nb_q_by_temp, sources) for nom in list_template],
         ignore_index=True)
-    return question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features,
+
+    if is_paraphrase:
+        data = question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features,
+                                 nb_q_by_feat, part_avec_features, seed)
+        return make_paraphrase(data)
+    else: return question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features,
                                  nb_q_by_feat, part_avec_features, seed)

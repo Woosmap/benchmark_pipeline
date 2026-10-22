@@ -68,11 +68,6 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    # `nb_q` est un plafond sur les *questions*, pas sur les ancres : chacune
-    # est déclinée sur chaque secteur de `list_direction`, donc le quota se divise d'abord. Sans cette
-    # division le template rendait 4 × nb_q. Diviser plutôt que tronquer après
-    # coup garde chaque ancre complet — couper dans le tas amputerait
-    # les dernières de leurs directions.
     for k in range(nb_q // len(list_direction)):
         cat_anc = list_cat[k % len(list_cat)]
         sub = df_osm[df_osm["category"] == cat_anc]

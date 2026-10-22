@@ -158,7 +158,10 @@ def format_composit_samples(
         nb_hard: int = 20,
         nb_unmatches: int = 1,
     ) -> tuple[list[Batch], NDArray]:
-
+    """
+    fonction qui porend le dataset question but et qui renvoit un dataframe au bon format de clonne 
+    avec les spécifications de la conf passée en arguments
+    """
     train, test = split_train_test(len(df_question), ratio_test, rng)
     train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches, rows_target=rows_target)
     test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, rows_target=rows_target, is_test=True)

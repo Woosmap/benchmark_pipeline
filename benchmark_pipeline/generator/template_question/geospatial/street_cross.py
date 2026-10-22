@@ -22,11 +22,6 @@ def touching_streets(df_streets, street, tol=1.0):
     geom = street.geometry
     d = df_streets.geometry.distance(geom)
     proches = df_streets[(d <= tol) & (df_streets["id_street"] != street.id_street)]
-    # La distance seule admet deux rues simplement *voisines* — deux parallèles
-    # à 0,5 m passent le seuil sans se croiser. Leur `intersection()` est alors
-    # vide, et `distance()` contre une géométrie vide vaut NaN : toute la vérité
-    # terrain de la question perdait son ordre. Le seuil ne sert plus qu'à
-    # écarter grossièrement avant le test exact, qui est coûteux.
     return proches[~proches.geometry.intersection(geom).is_empty]
 
 def cross_streets(df, street_geom_a, street_geom_b, k=100):
@@ -69,11 +64,6 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     for _ in range(nb_q):
-        # Une rue s'identifie par la valeur de sa colonne `id_street`, comme
-        # dans `street_along`. L'ancien code tirait cette valeur puis la passait
-        # à `.loc`, qui attend une étiquette d'index : correct tant que les deux
-        # coïncident, faux en silence dès que `df_streets` a été filtré ou
-        # réindexé en amont.
         id_street_a = rng.choice(df_streets["id_street"])
         street_a = df_streets[df_streets["id_street"] == id_street_a].iloc[0]
         candidates = touching_streets(df_streets, street_a)

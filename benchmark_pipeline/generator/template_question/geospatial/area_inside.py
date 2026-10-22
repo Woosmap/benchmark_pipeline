@@ -43,10 +43,6 @@ def make_question_area_inside(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     areas = df_area[df_area.geometry.area > min_size]
-    # Tirer dans `len(areas)` et plafonner la *taille* à `nb_q`, et non l'inverse.
-    # `rng.choice(min(len(areas), nb_q), size=nb_q)` tirait dans `range(nb_q)` :
-    # au-delà de la nb_q-ième, aucune zone n'était atteignable quelle que soit la
-    # graine, et un corpus plus petit que `nb_q` levait ValueError.
     sample_areas = rng.choice(len(areas), size=min(len(areas), nb_q), replace=False)
     for id_a in sample_areas:
         area = areas.iloc[id_a]
@@ -54,11 +50,6 @@ def make_question_area_inside(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
         if results.empty:
             continue
         else:
-            # Mesurer contre le polygone **plein** donnait 0.0 pour tout point
-            # intérieur — c'est une propriété de shapely, pas un bug : la
-            # colonne était un vecteur de zéros et le rang numérotait l'ordre du
-            # corpus. On mesure donc au centroïde, et on trie, comme
-            # `area_direction`. (`area_border`, lui, mesure au `.boundary`.)
             centre = area.geometry.centroid
             results = results.assign(
                 dist=results.geometry.distance(centre)
