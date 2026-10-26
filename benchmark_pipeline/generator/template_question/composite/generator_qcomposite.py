@@ -6,9 +6,7 @@ import pandas as pd
 
 from benchmark_pipeline.config import FEATURES
 from benchmark_pipeline.generator.template_question.ratio import allocate
-from benchmark_pipeline.generator.template_question.registry import REGISTRY
-from benchmark_pipeline.generator.template_question.registry import REGISTRY
-import benchmark_pipeline.generator.template_question.geospatial 
+from benchmark_pipeline.generator.template_question.registry import get_template
 
 
 list_template = ['make_question_area_border',
@@ -17,6 +15,7 @@ list_template = ['make_question_area_border',
                  'make_question_point_near_metric', 'make_question_point_near',
                  'make_question_point_towards', 'make_question_street_along',
                  'make_question_street_cross']
+
 MOTS_GENERIQUES = {"poi", "pois"}
 
 
@@ -128,7 +127,7 @@ def _appeler_template(nom, nb_q, sources):
     Returns:
         DataFrame: Les questions spatiales produites par ce template.
     """
-    generateur = REGISTRY[nom]
+    generateur = get_template(nom)
     attendues = inspect.signature(generateur).parameters
     return generateur(nb_q=nb_q, **{k: v for k, v in sources.items() if k in attendues})
 

@@ -1,6 +1,4 @@
-import re
 
-import pandas as pd
 
 def add_anchors(df_question):
     list_id_anchors = df_question['anchors_id']

@@ -34,9 +34,6 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist_a`, `dist_b`, `along`,
             `cross_m`, triées par écart latéral puis avancement.
-
-    TODO: `ab_len` vaut 0 si A et B coïncident, ce qui produit une division par
-        zéro et des NaN silencieux ; garder le cas ou l'écarter en amont.
     """
     if con is None:
         con = duckdb.connect()

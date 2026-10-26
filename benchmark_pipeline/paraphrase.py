@@ -5,7 +5,6 @@ import pandas as pd
 from mlx_lm import batch_generate, load
 from mlx_lm.sample_utils import make_sampler
 
-
 _load = lru_cache(maxsize=1)(load)
 
 CONTEXT = "Paraphrase this spatial search query. Keep place names, place category and spatial relation unchanged. Answer with the paraphrase only."
