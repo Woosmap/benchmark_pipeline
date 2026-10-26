@@ -1,7 +1,8 @@
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
+import shapely
 
 from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
@@ -28,11 +29,11 @@ def side_of_street(street_geom, pt):
         rapport au mauvais tronçon. Projeter sur le tronçon le plus proche de `pt`.
     """
     s = street_geom.geoms[0] if street_geom.geom_type == "MultiLineString" else street_geom
-    t = s.project(pt)                                    # abscisse curviligne du projeté
-    p0 = s.interpolate(max(t - 5.0, 0))                  # deux points encadrant, pour la tangente
+    t = s.project(pt)
+    p0 = s.interpolate(max(t - 5.0, 0))
     p1 = s.interpolate(min(t + 5.0, s.length))
     cross = ((p1.x - p0.x) * (pt.y - p0.y)
-             - (p1.y - p0.y) * (pt.x - p0.x))            # produit vectoriel 2D
+             - (p1.y - p0.y) * (pt.x - p0.x))
     return 1.0 if cross >= 0 else -1.0
 
 def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
@@ -65,19 +66,29 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
     s = street_geom.geoms[0] if street_geom.geom_type == "MultiLineString" else street_geom
     side_y = side_of_street(s, poi_y_geom)
     t_y = s.project(poi_y_geom)
-
-    sub = df[df["category"] == cat].copy()
-    sub["side"] = sub.geometry.apply(lambda p: side_of_street(s, p))
-    sub["along"] = sub.geometry.apply(lambda p: s.project(p))
-    sub["cross"] = sub.geometry.distance(s)
-
-    sub = sub[(sub["side"] != side_y)
-              & (sub["cross"] <= max_cross)
-              & ((sub["along"] - t_y).abs() <= max_along)]
-
-    out = (sub.assign(score=(sub["along"] - t_y).abs())
-              .nsmallest(k, "score")[["poi_id", "poi_name", "cross", "along", "score"]]
-              .reset_index(drop=True))
+    sub = df[df["category"] == cat]
+    proches = np.sort(sub.sindex.query(s, predicate="dwithin", distance=max_cross))
+    sub = sub.iloc[proches]
+    if sub.empty:
+        return pd.DataFrame(columns=["poi_id", "poi_name", "cross", "along", "score", "rank"])
+    pts = sub.geometry.values
+    along = shapely.line_locate_point(s, pts)
+    p0 = shapely.line_interpolate_point(s, np.maximum(along - 5.0, 0))
+    p1 = shapely.line_interpolate_point(s, np.minimum(along + 5.0, s.length))
+    x0, y0 = shapely.get_x(p0), shapely.get_y(p0)
+    x1, y1 = shapely.get_x(p1), shapely.get_y(p1)
+    px, py = shapely.get_x(pts), shapely.get_y(pts)
+    side = np.where((x1 - x0) * (py - y0) - (y1 - y0) * (px - x0) >= 0, 1.0, -1.0)
+    cross = shapely.distance(pts, s)
+    garde = (side != side_y) & (cross <= max_cross) & (np.abs(along - t_y) <= max_along)
+    out = pd.DataFrame({
+        "poi_id": sub["poi_id"].values[garde],
+        "poi_name": sub["poi_name"].values[garde],
+        "cross": cross[garde],
+        "along": along[garde],
+    })
+    out["score"] = (out["along"] - t_y).abs()
+    out = out.nsmallest(k, "score").reset_index(drop=True)
     out["rank"] = out.index + 1
     return out
 
@@ -105,8 +116,7 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
     n_queries_per_stratum = nb_q // len(list_cat)
-
-    lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiString"])]
+    lines = df_streets[df_streets.geometry.geom_type.isin(["LineString", "MultiLineString"])]
 
     for cat_q in list_cat:
         n = 0
@@ -114,8 +124,8 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
         while n < n_queries_per_stratum and tries < max_tries:
             tries += 1
             street = lines.loc[rng.choice(lines.index)]
-
-            near = df_osm[df_osm.geometry.distance(street.geometry) <= 40]
+            proches = np.sort(df_osm.sindex.query(street.geometry, predicate="dwithin", distance=40))
+            near = df_osm.iloc[proches]
             if near.empty:
                 continue
             poi_y = near.loc[rng.choice(near.index)]
@@ -124,10 +134,9 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             results = results[results["poi_id"] != poi_y["poi_id"]]
             if results.empty:
                 continue
-
             dic_benchmark["query"].append(f"{cat_q} across {street['street_name']} from {poi_y['poi_name']}")
             dic_benchmark["category_query"].append(cat_q)
-            dic_benchmark["street_index"].append(street.name)
+            dic_benchmark["street_index"].append(street["id_street"])
             dic_benchmark["street_name"].append(street["street_name"])
             dic_benchmark["street_geometry"].append(street.geometry)
             dic_benchmark["poi_y_id"].append(poi_y["poi_id"])
@@ -138,6 +147,8 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             dic_benchmark["results_poi_name"].append(list(results.poi_name))
             dic_benchmark["results_poi_dist"].append(list(results["cross"]))
             dic_benchmark["results_poi_rank"].append(list(results["rank"]))
+            dic_benchmark["anchors_type"].append(["street", "point"])
+            dic_benchmark["anchors_name"].append([street["street_name"], poi_y["poi_name"]])
+            dic_benchmark["anchors_id"].append([street["id_street"], poi_y["poi_id"]])
             n += 1
-
     return pd.DataFrame(dic_benchmark)

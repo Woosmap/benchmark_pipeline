@@ -27,10 +27,9 @@ Dependance obligatoire : pandas. Fallbacks (rapidfuzz / sentence-transformers) o
 import re
 import unicodedata
 from collections import Counter
- 
+
 import pandas as pd
- 
- 
+
 # ===========================================================================
 #  1. VOCABULAIRES  (a completer au fur et a mesure avec unknown_report)
 # ===========================================================================

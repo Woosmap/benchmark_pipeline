@@ -1,9 +1,13 @@
-from pandas import DataFrame
-import numpy as np
-from dataclasses import dataclass, asdict
 import json
+from dataclasses import asdict, dataclass
 
-from benchmark_pipeline.generator.template_question.semantic.batcher import make_benchmark_question
+import numpy as np
+from pandas import DataFrame
+
+from benchmark_pipeline.generator.template_question.semantic.batcher import (
+    make_benchmark_question,
+)
+
 
 @dataclass
 class BenchmarkConfig:
@@ -26,5 +30,7 @@ def register_semantic_query(
 
     DataFrame(train_set).to_parquet(save_path + "train_set.parquet")
     DataFrame(test_set).to_parquet(save_path + "test_set.parquet")
+    df_question.to_parquet(save_path + "df_question.parquet")
+    df_osm.to_parquet(save_path + "df_osm.parquet")
     with open(save_path + "config.json", "w") as f:
         json.dump(asdict(conf), f, indent=2)

@@ -1,40 +1,31 @@
-import numpy as np
 from collections import defaultdict
-import duckdb
+
+import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def border_area(area, category, df_osm, cat_col="category"):
-    """Classe les POIs d'une catégorie par distance à une zone.
-
-    Contrairement à `inside_area` et `outside_area`, reçoit l'ensemble des POIs
-    sans restriction préalable.
+def pois_near_border(df_osm, area, band):
+    """POIs d'une catégorie situés à moins de `band` mètres du bord d'une zone.
 
     Args:
-        area (BaseGeometry): Polygone de la zone, en EPSG:2154.
-        category (str): Catégorie de POI recherchée.
-        df_osm (GeoDataFrame): POIs candidats, non filtrés.
-        cat_col (str): Nom de la colonne de catégorie.
+        df_osm (GeoDataFrame): POIs en EPSG:2154.
+        area (BaseGeometry): Géométrie de la zone.
+        band (float): Largeur de la bande, en mètres.
 
     Returns:
-        DataFrame: POIs de la catégorie, avec `dist`, triés par distance
-            croissante et réindexés.
-
-    TODO: ne mesure pas la distance au bord mais au polygone plein. Tous les POIs
-        intérieurs sont donc à distance 0 et occupent la tête du classement dans
-        un ordre arbitraire, alors que la question porte précisément sur la
-        bordure. Mesurer contre `area.boundary` (ou `area.exterior`), qui est la
-        seule géométrie dont la distance est nulle exactement sur le pourtour.
+        GeoDataFrame: Les POIs retenus, colonne `dist` ajoutée, triés par
+            distance croissante au bord.
     """
-    sel = df_osm[df_osm[cat_col] == category].copy()
-    sel["dist"] = sel.geometry.distance(area)
-    return sel.sort_values("dist").reset_index(drop=True)
+    border = area.boundary
+    idx = df_osm.sindex.query(border, predicate="dwithin", distance=band)
+    pois = df_osm.iloc[idx]
+    return pois.assign(dist=pois.geometry.distance(border)).sort_values("dist")
 
 @template("make_question_area_border")
-def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
+def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=110, seed=42):
     """Génère les questions de bordure « X en limite de la zone Z ».
 
     Pour chaque catégorie cible, tire des zones jusqu'à atteindre le quota, dans
@@ -48,43 +39,28 @@ def make_question_area_border(df_osm, df_area, min_size=1000, nb_q=110, seed=42)
         seed (int): Graine du générateur aléatoire.
 
     Returns:
-        DataFrame: Une ligne par question, mêmes colonnes que
-            `make_question_insidearea`.
-
-    TODO: hérite du défaut de `border_area` — la vérité terrain est actuellement
-        « les POIs intérieurs, en ordre arbitraire », pas « les POIs en bordure ».
-    TODO: aucun rayon maximal ; ajouter une bande (`|dist| <= 50 m` autour du
-        bord) pour que la relation ait un sens.
-    TODO: `results_poi_rank` 0-based, cf. `make_question_insidearea`.
+        DataFrame: Une ligne par question, mêmes colonnes que `make_question_insidearea`.
     """
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
-    n_queries_per_stratum = nb_q // len(list_cat)
 
     areas = df_area[df_area.geometry.area > min_size]
-
-    for cat_q in list_cat:
-        nq = 0
-        i = 0
-        while nq != n_queries_per_stratum and i<200:
-            i+=1
-            area = areas.loc[rng.choice(areas.index)]
-            results = border_area(area.geometry, cat_q, df_osm)
-            if results.empty:
-                continue
-            nq +=1
-
-            dic_benchmark["query"].append(f"{cat_q} at the border of {area['area_name']}")
-            dic_benchmark["category_query"].append(cat_q)
-            dic_benchmark["area_index"].append(area.name)
-            dic_benchmark["area_name"].append(area["area_name"])
-            dic_benchmark["area_geometry"].append(area.geometry)
-            dic_benchmark["function"].append("border_area")
-            dic_benchmark["results_poi_id"].append(list(results.poi_id))
-            dic_benchmark["results_poi_name"].append(list(results.poi_name))
-            dic_benchmark["results_poi_dist"].append(list(results["dist"]))
-            dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
-
-
+    for _ in range(nb_q):
+        area = areas.loc[rng.choice(areas.index)]
+        results = pois_near_border(df_osm, area.geometry, band)
+        if results.empty:
+            continue
+        dic_benchmark["query"].append(f"pois at the border of {area['area_name']}")
+        dic_benchmark["area_index"].append(area["id_area"])
+        dic_benchmark["area_name"].append(area["area_name"])
+        dic_benchmark["area_geometry"].append(area.geometry)
+        dic_benchmark["function"].append("pois_near_border")
+        dic_benchmark["results_poi_id"].append(list(results.poi_id))
+        dic_benchmark["results_poi_name"].append(list(results.poi_name))
+        dic_benchmark["results_poi_dist"].append(list(results["dist"]))
+        dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
+        dic_benchmark["anchors_name"].append([area["area_name"]])
+        dic_benchmark["anchors_id"].append([area["id_area"]])
+        dic_benchmark["anchors_type"].append(["area"])
     return pd.DataFrame(dic_benchmark)
