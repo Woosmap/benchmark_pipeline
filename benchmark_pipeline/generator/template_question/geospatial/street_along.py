@@ -7,7 +7,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def along_street(df, street_geom, max_dist, k=100):
+def along_street(df, street_geom, max_dist=DISTANCE_STREET_MAX):
     """Retourne les POIs d'une catégorie les plus proches d'une rue.
 
     La distance est mesurée du POI à la géométrie de la rue, pas à un point : pour
@@ -18,7 +18,7 @@ def along_street(df, street_geom, max_dist, k=100):
         df (GeoDataFrame): POIs candidats en EPSG:2154.
         street_geom (LineString | MultiLineString): Géométrie de la rue.
         cat (str): Catégorie de POI recherchée.
-        k (int): Nombre maximal de résultats retournés.
+        distance_max (float | None): Max distance to the street, in meters; `None` keeps every POI.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist` (mètres), `rank`
@@ -27,12 +27,12 @@ def along_street(df, street_geom, max_dist, k=100):
     sub = df.copy()
     sub["dist"] = sub.geometry.distance(street_geom)
     sub = sub[sub["dist"] < max_dist]
-    out = sub.nsmallest(k, "dist")[["poi_id", "poi_name", "dist"]].reset_index(drop=True)
+    out = sub[["poi_id", "poi_name", "dist"]].sort_values("dist").reset_index(drop=True)
     out["rank"] = out.index + 1
     return out
 
 @template("make_question_street_along")
-def make_question_street_along(df_osm, df_streets, max_dist=50, min_length=500, nb_q=110, seed=42):
+def make_question_street_along(df_osm, df_streets, max_dist=DISTANCE_STREET_MAX, min_length=500, nb_q=110, seed=42):
     """Génère les questions de linéaire « X le long de la rue R ».
 
     Contrairement aux générateurs à ancre POI, la stratification porte ici sur la

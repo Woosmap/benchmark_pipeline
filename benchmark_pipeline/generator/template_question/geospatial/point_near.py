@@ -8,8 +8,8 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def near_sql(df, x, y, cat=None, k=100):
-    """Retourne les `k` POIs les plus proches d'un point.
+def near_sql(df, x, y, distance_max=DISTANCE_MAX, cat=None):
+    """Retourne les POIs proches d'un point, triés par distance.
 
     Calcule les distances directement sur la colonne `geometry`, sans passer par
     DuckDB. Les coordonnées et les géométries sont en Lambert-93 (EPSG:2154),
@@ -21,7 +21,7 @@ def near_sql(df, x, y, cat=None, k=100):
         x (float): Abscisse Lambert-93 du point de référence.
         y (float): Ordonnée Lambert-93 du point de référence.
         cat (str | None): Catégorie de POI recherchée ; `None` ne filtre pas.
-        k (int): Nombre maximal de résultats retournés.
+        distance_max (float | None): Max distance to the point, in meters; `None` keeps every POI.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist` (mètres), triées par
@@ -34,7 +34,9 @@ def near_sql(df, x, y, cat=None, k=100):
         "poi_name": candidats["poi_name"],
         "dist": candidats.geometry.distance(Point(x, y)),
     })
-    return results.nsmallest(k, "dist").reset_index(drop=True)
+    if distance_max is not None:
+        results = results[results["dist"] <= distance_max]
+    return results.sort_values("dist").reset_index(drop=True)
 
 @template("make_question_point_near")
 def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
@@ -64,10 +66,14 @@ def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
+    # Sampling without replacement: one shuffled pool of distinct anchors per category
+    anchor_pools = {cat: df_osm[df_osm["category"] == cat].sample(frac=1, random_state=rng) for cat in list_cat}
     for k in range(nb_q):
         cat_anc = list_cat[k % len(list_cat)]
-        sub = df_osm[df_osm["category"] == cat_anc]
-        anchor = sub.sample(1, random_state=rng).iloc[0]
+        rank_in_pool = k // len(list_cat)
+        if rank_in_pool >= len(anchor_pools[cat_anc]):
+            continue
+        anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
         results = near_sql(df_osm, anchor.x, anchor.y)
         results = results[results["poi_id"] != anchor.poi_id]
         

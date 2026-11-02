@@ -16,7 +16,7 @@ CARDINAL_AZ = {
 SECTEURS = np.array(sorted(CARDINAL_AZ, key=CARDINAL_AZ.get))
 
 
-def pack_by_direction(df, x, y, k=100):
+def pack_by_direction(df, x, y, distance_max=DISTANCE_MAX):
     """Classe les POIs dans les quatre secteurs cardinaux autour d'un point.
 
     Args:
@@ -24,7 +24,7 @@ def pack_by_direction(df, x, y, k=100):
             en EPSG:2154.
         x (float): Abscisse Lambert-93 du point de référence.
         y (float): Ordonnée Lambert-93 du point de référence.
-        k (int): Nombre maximal de résultats par direction.
+        distance_max (float | None): Max distance to the point, in meters; `None` keeps every POI.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist` (mètres), `az` (degrés),
@@ -43,9 +43,9 @@ def pack_by_direction(df, x, y, k=100):
         "az": az,
         "direction": SECTEURS[(((az + 45) % 360) // 90).astype(int)],
     })
-    return (resultats.sort_values("dist")
-                     .groupby("direction", sort=False).head(k)
-                     .reset_index(drop=True))
+    if distance_max is not None:
+        resultats = resultats[resultats["dist"] <= distance_max]
+    return resultats.sort_values("dist").reset_index(drop=True)
 
 
 @template("make_question_point_near_cardinal")
@@ -68,10 +68,14 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
+    # Sampling without replacement: one shuffled pool of distinct anchors per category
+    anchor_pools = {cat: df_osm[df_osm["category"] == cat].sample(frac=1, random_state=rng) for cat in list_cat}
     for k in range(nb_q // len(list_direction)):
         cat_anc = list_cat[k % len(list_cat)]
-        sub = df_osm[df_osm["category"] == cat_anc]
-        anchor = sub.sample(1, random_state=rng).iloc[0]
+        rank_in_pool = k // len(list_cat)
+        if rank_in_pool >= len(anchor_pools[cat_anc]):
+            continue
+        anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
         voisins = pack_by_direction(df_osm, anchor.x, anchor.y)
         voisins = voisins[voisins["poi_id"] != anchor.poi_id]
         for d in list_direction:

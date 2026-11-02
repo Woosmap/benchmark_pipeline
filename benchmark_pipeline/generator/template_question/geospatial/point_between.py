@@ -10,7 +10,7 @@ from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
+def between_ab_sql(df, ax, ay, bx, by, cat,
                    corridor_m=200.0, con=None):
     """Retourne les POIs d'une catégorie situés dans le corridor reliant deux points.
 
@@ -64,8 +64,7 @@ def between_ab_sql(df, ax, ay, bx, by, cat, k=100,
         WHERE along BETWEEN 0 AND ab_len
           AND cross_m <= $corr
         ORDER BY cross_m, along
-        LIMIT $k
-    """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "cat": cat, "k": k,
+    """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "cat": cat,
           "corr": corridor_m}).df()
 
 @template("make_question_point_between")

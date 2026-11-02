@@ -9,7 +9,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def towards_b_sql(df, ax, ay, bx, by, k=100,
+def towards_b_sql(df, ax, ay, bx, by,
                   half_width=70.0, con=None):
     """Retourne les POIs d'une catégorie situés dans la direction d'un point B depuis un point A.
 
@@ -24,7 +24,6 @@ def towards_b_sql(df, ax, ay, bx, by, k=100,
         ay (float): Ordonnée Lambert-93 du point A.
         bx (float): Abscisse Lambert-93 du point B, qui donne la direction.
         by (float): Ordonnée Lambert-93 du point B.
-        k (int): Nombre maximal de résultats retournés.
         half_width (float): Demi-ouverture du cône, en degrés.
         con (duckdb.DuckDBPyConnection | None): Connexion à réutiliser.
 
@@ -60,8 +59,7 @@ def towards_b_sql(df, ax, ay, bx, by, k=100,
         FROM d CROSS JOIN ab
         WHERE abs(((d.az - ab.center + 540)::DOUBLE % 360) - 180) <= $half
         ORDER BY d.dist
-        LIMIT $k
-    """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "k": k,
+    """, {"ax": ax, "ay": ay, "bx": bx, "by": by,
           "half": half_width}).df()
 
 @template("make_question_point_towards")
@@ -88,10 +86,14 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
     pid = df_osm["poi_id"].to_numpy()
+    # Sampling without replacement: one shuffled pool of distinct anchors per category
+    anchor_pools = {cat: df_osm[df_osm["category"] == cat].sample(frac=1, random_state=rng) for cat in list_cat}
     for k in range(nb_q):
         cat_anc = list_cat[k % len(list_cat)]
-        sub = df_osm[df_osm["category"] == cat_anc]
-        anchor = sub.sample(1, random_state=rng).iloc[0]
+        rank_in_pool = k // len(list_cat)
+        if rank_in_pool >= len(anchor_pools[cat_anc]):
+            continue
+        anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
         index_b = rng.choice([k for k in tree.query_ball_point([anchor.x, anchor.y], 1000)
                                         if pid[k] != anchor.poi_id])
         anchor_b = df_osm.iloc[index_b]

@@ -7,7 +7,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def near_metric_sql(df, x, y, list_distance, k=100):
+def near_metric_sql(df, x, y, list_distance):
     """Retourne les lots de POIs situés à moins de chacun des rayons d'un point.
 
     Args:
@@ -26,7 +26,7 @@ def near_metric_sql(df, x, y, list_distance, k=100):
     """
     dist = np.hypot(df["x"].to_numpy() - x, df["y"].to_numpy() - y)
     ordre = np.argsort(dist, kind="stable")
-    tailles = np.minimum(np.searchsorted(dist[ordre], list_distance), k)
+    tailles = np.searchsorted(dist[ordre], list_distance)
     positions = np.concatenate([ordre[:n] for n in tailles]) if len(tailles) else ordre[:0]
     return pd.DataFrame({
         "poi_id": df["poi_id"].to_numpy()[positions],
@@ -55,10 +55,14 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()
+    # Sampling without replacement: one shuffled pool of distinct anchors per category
+    anchor_pools = {cat: df_osm[df_osm["category"] == cat].sample(frac=1, random_state=rng) for cat in list_cat}
     for k in range(nb_q // len(list_distance)):
         cat_anc = list_cat[k % len(list_cat)]
-        sub = df_osm[df_osm["category"] == cat_anc]
-        anchor = sub.sample(1, random_state=rng).iloc[0]
+        rank_in_pool = k // len(list_cat)
+        if rank_in_pool >= len(anchor_pools[cat_anc]):
+            continue
+        anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
         results = near_metric_sql(df_osm, anchor.x, anchor.y, list_distance)
         results = results[results["poi_id"] != anchor.poi_id]
         for d in list_distance:

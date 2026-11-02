@@ -20,6 +20,9 @@ AREA_TAGS = {"leisure": ["park", "nature_reserve", "garden"],
         }
 
 
+DISTANCE_MAX = 1000 #en mètres
+DISTANCE_STREET_MAX = 50
+
 
 FEATURES = [Category(), CookingType(), OutDoorSeating(), InDoorSeating()]
 

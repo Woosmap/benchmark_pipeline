@@ -24,7 +24,7 @@ def touching_streets(df_streets, street, tol=1.0):
     proches = df_streets[(d <= tol) & (df_streets["id_street"] != street.id_street)]
     return proches[~proches.geometry.intersection(geom).is_empty]
 
-def cross_streets(df, street_geom_a, street_geom_b, k=100):
+def cross_streets(df, street_geom_a, street_geom_b, distance_max=DISTANCE_MAX):
     """Retourne les POIs d'une catégorie les plus proches du croisement de deux rues.
 
     Args:
@@ -32,7 +32,6 @@ def cross_streets(df, street_geom_a, street_geom_b, k=100):
         street_geom_a (LineString | MultiLineString): Première rue.
         street_geom_b (LineString | MultiLineString): Seconde rue.
         cat (str): Catégorie de POI recherchée.
-        k (int): Nombre maximal de résultats retournés.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist` (mètres au croisement),
@@ -41,8 +40,10 @@ def cross_streets(df, street_geom_a, street_geom_b, k=100):
     inter_point = street_geom_a.intersection(street_geom_b)
     sub = df.copy()
     sub["dist"] = sub.geometry.distance(inter_point)
-    out = sub.nsmallest(k, "dist")[["poi_id", "poi_name", "dist"]].reset_index(drop=True)
+    out = sub[["poi_id", "poi_name", "dist"]].sort_values("dist").reset_index(drop=True)
     out["rank"] = out.index + 1
+    if distance_max is not None:
+        out = out[out["dist"] <= distance_max]
     return out
 
 @template("make_question_street_cross")

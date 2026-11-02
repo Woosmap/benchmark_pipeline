@@ -41,13 +41,6 @@ def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     areas = df_area[df_area.geometry.area > min_size]
-    # `size` plafonné au corpus : `replace=False` exige une population au moins
-    # aussi grande que l'échantillon, sinon ValueError sur un corpus réduit.
-    # `nb_q` est un plafond sur les *questions*, pas sur les zones : chacune
-    # est déclinée sur chaque direction de `list_direction`, donc le quota se divise d'abord. Sans cette
-    # division le template rendait 4 × nb_q. Diviser plutôt que tronquer après
-    # coup garde chaque zone complet — couper dans le tas amputerait
-    # les dernières de leurs directions.
     nb_zones = min(len(areas), nb_q // len(list_direction))
     sample_areas = rng.choice(len(areas), size=nb_zones, replace=False)
     for id_a in sample_areas:
