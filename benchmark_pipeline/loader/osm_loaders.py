@@ -9,6 +9,7 @@ from benchmark_pipeline.config import (
     CATEGORIES,
     FEATURES,
     STREETS_TAGS,
+    ECRS,
 )
 from benchmark_pipeline.loader.data_cleaning.cooking_column import (
     classify_cuisine_column,
@@ -20,7 +21,7 @@ from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
 
 def load_streets():
     streets = ox.features_from_bbox(BBOX, tags=STREETS_TAGS)
-    streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(2154)
+    streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(ECRS)
     rows = []
     for name, g in streets.groupby("name")["geometry"]:
         u = unary_union(g.tolist())
@@ -64,7 +65,7 @@ def load_area():
     area = ox.features_from_bbox(BBOX, tags=AREA_TAGS)
     poi_all_index = area.index.tolist()
     area["id_area"] = [int(i) for _, i in poi_all_index]
-    area = area[area.geom_type.isin(["Polygon"])].to_crs(2154)
+    area = area[area.geom_type.isin(["Polygon"])].to_crs(ECRS)
     area = area[~area.name.isna()]
     lvl = pd.to_numeric(area["admin_level"], errors="coerce")
     area = area[lvl.isna() | (lvl >= 9)]

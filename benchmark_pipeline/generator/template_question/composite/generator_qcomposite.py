@@ -1,27 +1,22 @@
 import inspect
 from itertools import combinations
-
 import numpy as np
 import pandas as pd
 
-from benchmark_pipeline.config import FEATURES
+from benchmark_pipeline.config import FEATURES, MANDATORY_FEATURES
 from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import get_template
+from benchmark_pipeline.config import LIST_TEMPLATE
 
-
-list_template = ['make_question_area_border',
-                 'make_question_area_inside', 'make_question_area_direction',
-                 'make_question_point_between', 'make_question_point_near_cardinal',
-                 'make_question_point_near_metric', 'make_question_point_near',
-                 'make_question_point_towards', 'make_question_street_along',
-                 'make_question_street_cross']
 
 MOTS_GENERIQUES = {"poi", "pois"}
 
 
-def _groupes_disponibles(reponse, nb_attributs):
+def _groupes_disponibles(reponse, nb_attributs, obligatoire=MANDATORY_FEATURES):
+    autres = [c for c in reponse.columns if c != obligatoire]
     trouves = []
-    for colonnes in combinations(reponse.columns, nb_attributs):
+    for extra in combinations(autres, nb_attributs - 1):
+        colonnes = (obligatoire, *extra)
         renseignes = reponse.dropna(subset=list(colonnes))
         groupes = renseignes.groupby(list(colonnes), sort=False, observed=True)
         for valeurs, pois in groupes.groups.items():
@@ -138,7 +133,6 @@ def make_question_composite(
         df_streets,
         nb_q_by_temp=100,
         nb_q_by_feat=10,
-        list_template=list_template,
         ratio_features=None,
         part_avec_features=1.0,
         feature_cols=FEATURES,
@@ -156,7 +150,6 @@ def make_question_composite(
         df_streets (GeoDataFrame | None): Rues, exigées par les `street_*`.
         nb_q_by_temp (int): `nb_q` transmis à chaque générateur spatial.
         nb_q_by_feat (int): Contraintes tirées par question spatiale enrichie.
-        list_template (list[str]): Clés de `REGISTRY` à exécuter.
         ratio_features (dict[int, float] | None): Poids par nombre d'attributs
             combinés ; équirépartition sur 1, 2 et 3 si None.
         part_avec_features (float): Part des questions à enrichir, dans [0, 1].
@@ -171,7 +164,7 @@ def make_question_composite(
     ratio_features = ratio_features or {1: 1, 2: 1, 3: 1}
     sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
     df_geo_q = pd.concat(
-        [_appeler_template(nom, nb_q_by_temp, sources) for nom in list_template],
+        [_appeler_template(nom, nb_q_by_temp, sources) for nom in LIST_TEMPLATE],
         ignore_index=True)
 
     if is_paraphrase:

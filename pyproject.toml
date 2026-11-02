@@ -16,6 +16,8 @@ dependencies = [
     "osmnx>=2.0",        # l'API a change en v2, ne pas descendre en dessous
     "scipy",
     "matplotlib",
+    "mlx>=0.32.4",
+    "mlx-lm>=0.32.2",
 ]
 
 [project.optional-dependencies]

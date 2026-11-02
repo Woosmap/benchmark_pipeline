@@ -81,7 +81,6 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
             # modèle sur une question qui n'a pas de bonne réponse.
             if results.empty:
                 continue
-
             dic_benchmark["query"].append(f"pois to the {d} of {anchor.poi_name}")
             dic_benchmark["anchor_index"].append(anchor.poi_id)
             dic_benchmark["anchor_name"].append(anchor.poi_name)
@@ -97,4 +96,5 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
             dic_benchmark["anchors_type"].append(["point"])
             dic_benchmark["anchors_name"].append([anchor.poi_name])
             dic_benchmark["anchors_id"].append([anchor.poi_id])
+            
     return pd.DataFrame(dic_benchmark)
