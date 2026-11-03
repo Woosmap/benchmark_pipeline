@@ -6,7 +6,7 @@ import osmnx as ox
 import pandas as pd
 import pyarrow as pa
 
-from benchmark_pipeline.path import CACHE_DIR, GOOGLE_PLACES_FILE, DATA_DIR
+from benchmark_pipeline.path import CACHE_DIR, GOOGLE_PLACES_FILE, DATA
 
 
 def safe_to_parquet(gdf, path):
@@ -117,7 +117,7 @@ def extract_osm_pois(bbox, dic_tags, use_cache=True):
         GeoDataFrame: POIs nettoyés, projetés en EPSG:2154, avec colonnes
             lat, lon, x, y et category.
     """
-    path_pois = DATA_DIR / "pois" / f"pois_osm_{bbox}.parquet"
+    path_pois = DATA / "pois" / f"pois_osm_{bbox}.parquet"
     if os.path.exists(path_pois) and use_cache:
         print("lecture cache")
         pois = gpd.read_parquet(path_pois)

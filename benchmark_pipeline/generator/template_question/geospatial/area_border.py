@@ -52,7 +52,7 @@ def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=11
         if results.empty:
             continue
         dic_benchmark["query"].append(f"pois at the border of {area['area_name']}")
-        dic_benchmark["area_index"].append(area["id_area"])
+        dic_benchmark["area_index"].append(area["area_id"])
         dic_benchmark["area_name"].append(area["area_name"])
         dic_benchmark["area_geometry"].append(area.geometry)
         dic_benchmark["function"].append("pois_near_border")
@@ -61,6 +61,6 @@ def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=11
         dic_benchmark["results_poi_dist"].append(list(results["dist"]))
         dic_benchmark["results_poi_rank"].append(list(range(1, len(results) + 1)))
         dic_benchmark["anchors_name"].append([area["area_name"]])
-        dic_benchmark["anchors_id"].append([area["id_area"]])
+        dic_benchmark["anchors_id"].append([area["area_id"]])
         dic_benchmark["anchors_type"].append(["area"])
     return pd.DataFrame(dic_benchmark)

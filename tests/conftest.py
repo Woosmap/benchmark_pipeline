@@ -8,8 +8,8 @@ Le contrat de colonnes est celui de `benchmark_pipeline/loader/osm_loaders.py`,
 qui est la direction voulue du projet :
 
 * `df_osm`     → `poi_id`, `poi_name`, `category`, `x`, `y`, `geometry`
-* `df_area`    → `id_area`, `area_name`, `geometry`
-* `df_streets` → `id_street`, `street_name`, `geometry`
+* `df_area`    → `area_id`, `area_name`, `geometry`
+* `df_streets` → `street_id`, `street_name`, `geometry`
 
 Tout est en **EPSG:2154** (Lambert-93), donc les distances sont euclidiennes et
 en mètres, comme l'attendent les requêtes DuckDB des templates.
@@ -125,7 +125,7 @@ def build_df_area():
     `df_area.geometry.iloc[0]` et comptent sur ses 400×400 m.
 
     Returns:
-        GeoDataFrame: `id_area`, `area_name`, `geometry`, en EPSG:2154.
+        GeoDataFrame: `area_id`, `area_name`, `geometry`, en EPSG:2154.
     """
     rows = [
         # couvre le quadrant bas-gauche de la grille : 160 000 m²
@@ -147,10 +147,10 @@ def build_df_area():
                 "geometry": box(x0, y0, x0 + QUARTIER_SIDE, y0 + QUARTIER_SIDE),
             })
     df_area = gpd.GeoDataFrame(rows, crs=2154)
-    # `id_area` est l'identifiant publié par `load_area`, distinct du label
+    # `area_id` est l'identifiant publié par `load_area`, distinct du label
     # d'index : c'est lui que lisent les templates et la colonne `anchors`.
-    df_area["id_area"] = df_area.index
-    return df_area[["id_area", "area_name", "geometry"]]
+    df_area["area_id"] = df_area.index
+    return df_area[["area_id", "area_name", "geometry"]]
 
 
 def build_df_streets():
@@ -161,21 +161,21 @@ def build_df_streets():
     deux mesurent 700 m, donc passent le `min_length=500` de `street_along`.
     `rue Coupee` est une MultiLineString, pour éprouver le filtre `geom_type`.
 
-    `id_street` est délibérément **égal au label d'index**, parce que
-    `street_cross.py:71-72` fait `df_streets.loc[<valeur de id_street>]` : sans
+    `street_id` est délibérément **égal au label d'index**, parce que
+    `street_cross.py:71-72` fait `df_streets.loc[<valeur de street_id>]` : sans
     cette égalité, ce template ne peut pas fonctionner du tout et l'on ne
     testerait que son plantage.
 
     Returns:
-        GeoDataFrame: `id_street`, `street_name`, `geometry`, en EPSG:2154.
+        GeoDataFrame: `street_id`, `street_name`, `geometry`, en EPSG:2154.
     """
     return gpd.GeoDataFrame(
         [
-            {"id_street": 0, "street_name": "rue Horizontale",
+            {"street_id": 0, "street_name": "rue Horizontale",
              "geometry": LineString([(OX - 50, STREET_H_Y), (OX + 650, STREET_H_Y)])},
-            {"id_street": 1, "street_name": "rue Verticale",
+            {"street_id": 1, "street_name": "rue Verticale",
              "geometry": LineString([(STREET_V_X, OY - 50), (STREET_V_X, OY + 650)])},
-            {"id_street": 2, "street_name": "rue Coupee",
+            {"street_id": 2, "street_name": "rue Coupee",
              "geometry": MultiLineString([
                  [(OX, OY + 600), (OX + 200, OY + 600)],
                  [(OX + 260, OY + 600), (OX + 500, OY + 600)],

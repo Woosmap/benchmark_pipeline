@@ -35,7 +35,7 @@ def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=200.0):
     candidates = df if cat is None else df[df["category"] == cat]
     abx, aby = bx - ax, by - ay
     ab_len = np.sqrt(abx ** 2 + aby ** 2)
-    px, py = candidates["x"].to_numpy() - ax, candidates["y"].to_numpy() - ay
+    px, py = candidates.geometry.x.to_numpy() - ax, candidates.geometry.y.to_numpy() - ay
     along = (px * abx + py * aby) / ab_len
     cross_m = np.abs(px * aby - py * abx) / ab_len
     kept = np.flatnonzero((along >= 0) & (along <= ab_len) & (cross_m <= corridor_m))
@@ -82,7 +82,7 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
     list_cat = df_osm["category"].unique()
     balance = allocate(nb_q, ratio_cat_anchor or {cat: 1 for cat in list_cat})
 
-    coordonnees = np.column_stack([df_osm.x.values, df_osm.y.values])
+    coordonnees = np.column_stack([df_osm.geometry.x.values, df_osm.geometry.y.values])
     arbre = cKDTree(coordonnees)
     poi_ids = df_osm["poi_id"].to_numpy()
     categories = df_osm["category"].to_numpy()
@@ -116,7 +116,7 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
                 anchor_a = df_osm.iloc[position_a]
                 anchor_b = df_osm.iloc[rng.choice(positions_b)]
 
-                results = between_ab_sql(df_osm, anchor_a.x, anchor_a.y, anchor_b.x, anchor_b.y,
+                results = between_ab_sql(df_osm, anchor_a.geometry.x, anchor_a.geometry.y, anchor_b.geometry.x, anchor_b.geometry.y,
                                          cat=None, corridor_m=corridor_m)
                 results = results[~results["poi_id"].isin([anchor_a.poi_id, anchor_b.poi_id])]
                 if results.empty:
@@ -127,13 +127,13 @@ def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
                 dic_benchmark["anchor_a_index"].append(anchor_a.poi_id)
                 dic_benchmark["anchor_a_name"].append(anchor_a.poi_name)
                 dic_benchmark["anchor_a_category"].append(anchor_a.category)
-                dic_benchmark["anchor_a_x"].append(anchor_a.x)
-                dic_benchmark["anchor_a_y"].append(anchor_a.y)
+                dic_benchmark["anchor_a_x"].append(anchor_a.geometry.x)
+                dic_benchmark["anchor_a_y"].append(anchor_a.geometry.y)
                 dic_benchmark["anchor_b_index"].append(anchor_b.poi_id)
                 dic_benchmark["anchor_b_name"].append(anchor_b.poi_name)
                 dic_benchmark["anchor_b_category"].append(anchor_b.category)
-                dic_benchmark["anchor_b_x"].append(anchor_b.x)
-                dic_benchmark["anchor_b_y"].append(anchor_b.y)
+                dic_benchmark["anchor_b_x"].append(anchor_b.geometry.x)
+                dic_benchmark["anchor_b_y"].append(anchor_b.geometry.y)
                 dic_benchmark["function"].append("between_ab_sql")
                 dic_benchmark["results_poi_id"].append(list(results.poi_id))
                 dic_benchmark["results_poi_name"].append(list(results.poi_name))

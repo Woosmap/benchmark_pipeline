@@ -12,7 +12,7 @@ def touching_streets(df_streets, street, tol=1.0):
 
     Args:
         df_streets (GeoDataFrame): Rues en EPSG:2154.
-        street (Series): Rue de référence, avec `id_street` et `geometry`.
+        street (Series): Rue de référence, avec `street_id` et `geometry`.
         tol (float): Tolérance de pré-filtrage, en mètres.
 
     Returns:
@@ -21,7 +21,7 @@ def touching_streets(df_streets, street, tol=1.0):
     """
     geom = street.geometry
     d = df_streets.geometry.distance(geom)
-    proches = df_streets[(d <= tol) & (df_streets["id_street"] != street.id_street)]
+    proches = df_streets[(d <= tol) & (df_streets["street_id"] != street.street_id)]
     return proches[~proches.geometry.intersection(geom).is_empty]
 
 def cross_streets(df, street_geom_a, street_geom_b, distance_max=DISTANCE_MAX):
@@ -64,12 +64,12 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
-    for id_street_a in rng.choice(df_streets["id_street"], size=min(len(df_streets), nb_q), replace=False):
-        street_a = df_streets[df_streets["id_street"] == id_street_a].iloc[0]
+    for id_street_a in rng.choice(df_streets["street_id"], size=min(len(df_streets), nb_q), replace=False):
+        street_a = df_streets[df_streets["street_id"] == id_street_a].iloc[0]
         candidates = touching_streets(df_streets, street_a)
         if len(candidates) > 0:
-            id_street_b = rng.choice(candidates["id_street"])
-            street_b = candidates[candidates["id_street"] == id_street_b].iloc[0]
+            id_street_b = rng.choice(candidates["street_id"])
+            street_b = candidates[candidates["street_id"] == id_street_b].iloc[0]
             results = cross_streets(df_osm, street_a.geometry, street_b.geometry)
 
             dic_benchmark["query"].append(f"pois at the intersection of  {street_a['street_name']} and {street_b['street_name']}")

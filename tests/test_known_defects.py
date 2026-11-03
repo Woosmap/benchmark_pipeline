@@ -453,7 +453,7 @@ def test_opposite_side_handles_multilinestring_streets(df_osm):
     # cheval » restent donc de part et d'autre.
     multi_only = gpd.GeoDataFrame(
         [{
-            "id_street": 0,
+            "street_id": 0,
             "street_name": "rue Horizontale Coupee",
             "geometry": MultiLineString([
                 [(OX - 50, STREET_H_Y), (OX + 250, STREET_H_Y)],
@@ -488,9 +488,9 @@ def test_touching_streets_only_returns_real_crossings():
     # deux segments parallèles distants de 0,5 m : proches, mais disjoints
     streets = gpd.GeoDataFrame(
         [
-            {"id_street": 0.0,
+            {"street_id": 0.0,
              "geometry": LineString([(OX, OY), (OX + 100, OY)])},
-            {"id_street": 1.0,
+            {"street_id": 1.0,
              "geometry": LineString([(OX, OY + 0.5), (OX + 100, OY + 0.5)])},
         ],
         crs=2154,
@@ -500,7 +500,7 @@ def test_touching_streets_only_returns_real_crossings():
     for _, other in neighbours.iterrows():
         junction = streets.geometry.iloc[0].intersection(other.geometry)
         assert not junction.is_empty, (
-            f"id_street={other['id_street']} est retenue comme croisant la "
+            f"street_id={other['street_id']} est retenue comme croisant la "
             f"rue 0, mais leur intersection est vide — "
             f"distance() y renverra NaN"
         )
@@ -510,7 +510,7 @@ def test_street_modules_agree_on_street_identity(df_osm, df_streets):
     """Les deux modules « rue » doivent identifier une rue de la même façon.
 
     `street_along.py:58` tire dans `df_streets.index` ; `street_cross.py:71-72`
-    tire une *valeur* de `id_street` et la passe à `.loc`, ce qui n'est correct
+    tire une *valeur* de `street_id` et la passe à `.loc`, ce qui n'est correct
     que si l'index et la colonne coïncident. Sur un `df_streets` réindexé — ce
     que fait n'importe quel filtrage en amont — le second se trompe de rue en
     silence, ou lève.
@@ -519,15 +519,15 @@ def test_street_modules_agree_on_street_identity(df_osm, df_streets):
         make_question_street_cross,
     )
 
-    # index volontairement décorrélé de id_street, comme après un filtrage
+    # index volontairement décorrélé de street_id, comme après un filtrage
     shuffled = df_streets.copy()
     shuffled.index = [10, 11, 12]
 
     bench = make_question_street_cross(df_osm, shuffled, nb_q=5, seed=42)
-    valid = set(shuffled["id_street"])
+    valid = set(shuffled["street_id"])
     wrong = [i for i in bench["street_a_index"] if i not in valid]
     assert not wrong, (
-        f"street_a_index contient des valeurs qui ne sont pas des id_street : "
+        f"street_a_index contient des valeurs qui ne sont pas des street_id : "
         f"{wrong[:3]}"
     )
 

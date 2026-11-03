@@ -31,8 +31,8 @@ def pack_by_direction(df, x, y, distance_max=DISTANCE_MAX):
             `direction`, triées par distance croissante. Les quatre secteurs de
             90° pavent le tour complet : chaque POI tombe dans exactement un.
     """
-    dx = df["x"].to_numpy() - x
-    dy = df["y"].to_numpy() - y
+    dx = df.geometry.x.to_numpy() - x
+    dy = df.geometry.y.to_numpy() - y
     # Azimut horaire depuis le nord : `arctan2(dx, dy)`, et non l'ordre
     # trigonométrique habituel `arctan2(dy, dx)`.
     az = (np.degrees(np.arctan2(dx, dy)) + 360) % 360
@@ -76,7 +76,7 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        voisins = pack_by_direction(df_osm, anchor.x, anchor.y)
+        voisins = pack_by_direction(df_osm, anchor.geometry.x, anchor.geometry.y)
         voisins = voisins[voisins["poi_id"] != anchor.poi_id]
         for d in list_direction:
             results = voisins[voisins["direction"] == d]
@@ -89,8 +89,8 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
             dic_benchmark["anchor_index"].append(anchor.poi_id)
             dic_benchmark["anchor_name"].append(anchor.poi_name)
             dic_benchmark["anchor_category"].append(anchor.category)
-            dic_benchmark["anchor_x"].append(anchor.x)
-            dic_benchmark["anchor_y"].append(anchor.y)
+            dic_benchmark["anchor_x"].append(anchor.geometry.x)
+            dic_benchmark["anchor_y"].append(anchor.geometry.y)
             dic_benchmark["direction"].append(d)
             dic_benchmark["function"].append("pack_by_direction")
             dic_benchmark["results_poi_id"].append(list(results.poi_id))

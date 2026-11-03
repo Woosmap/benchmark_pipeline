@@ -176,7 +176,7 @@ def montrer_questions(df_question, df_osm, par_type=True, nb=10, seed=None,
     else:
         positions = rng.choice(len(df_question), size=nb, replace=False)
     lignes = make_rows(df_question, df_osm, positions, rng, n_hard, nb_unmatches)
-    coords = df_osm.set_index("poi_id")[["x", "y"]]
+    coords = df_osm.set_index("poi_id").geometry.get_coordinates()
 
     colonnes = math.ceil(len(lignes) / 3)
     figure, axes = plt.subplots(3, colonnes, figsize=(4.2 * colonnes, 12))
@@ -185,7 +185,7 @@ def montrer_questions(df_question, df_osm, par_type=True, nb=10, seed=None,
         dx, dy, demi_u, demi_v, inclinaison = get_ellypse(question)
         ref_x, ref_y = point_reference(question)
 
-        ax.scatter(df_osm["x"], df_osm["y"], s=0.4, c="0.88", zorder=0, linewidths=0)
+        ax.scatter(df_osm.geometry.x, df_osm.geometry.y, s=0.4, c="0.88", zorder=0, linewidths=0)
         ax.add_patch(Ellipse((ref_x + dx, ref_y + dy), 2 * demi_u, 2 * demi_v,
                              angle=inclinaison, facecolor="tab:blue", alpha=0.30,
                              edgecolor="tab:blue", zorder=1))

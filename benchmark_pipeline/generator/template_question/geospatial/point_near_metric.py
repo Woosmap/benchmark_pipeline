@@ -24,7 +24,7 @@ def near_metric_sql(df, x, y, list_distance):
             distance croissante. Les rayons étant emboîtés, un POI apparaît dans
             tous les lots dont il respecte le rayon.
     """
-    dist = np.hypot(df["x"].to_numpy() - x, df["y"].to_numpy() - y)
+    dist = np.hypot(df.geometry.x.to_numpy() - x, df.geometry.y.to_numpy() - y)
     ordre = np.argsort(dist, kind="stable")
     tailles = np.searchsorted(dist[ordre], list_distance)
     positions = np.concatenate([ordre[:n] for n in tailles]) if len(tailles) else ordre[:0]
@@ -63,7 +63,7 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        results = near_metric_sql(df_osm, anchor.x, anchor.y, list_distance)
+        results = near_metric_sql(df_osm, anchor.geometry.x, anchor.geometry.y, list_distance)
         results = results[results["poi_id"] != anchor.poi_id]
         for d in list_distance:
             result = results[results["distance"] == d]
@@ -73,8 +73,8 @@ def make_question_point_near_metric(df_osm, ratio=None, list_distance=None, nb_q
             dic_benchmark["anchor_index"].append(anchor.poi_id)
             dic_benchmark["anchor_name"].append(anchor.poi_name)
             dic_benchmark["anchor_category"].append(anchor.category)
-            dic_benchmark["anchor_x"].append(anchor.x)
-            dic_benchmark["anchor_y"].append(anchor.y)
+            dic_benchmark["anchor_x"].append(anchor.geometry.x)
+            dic_benchmark["anchor_y"].append(anchor.geometry.y)
             dic_benchmark["distance"].append(d)
             dic_benchmark["function"].append("near_metric_sql")
             dic_benchmark["results_poi_id"].append(list(result.poi_id))

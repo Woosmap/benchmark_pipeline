@@ -76,8 +76,8 @@ def add_lateral_hop(
     answers = set(question["answers"])
     area = find_area(df_osm.loc[question["answers"]]).buffer(200)
     anchors = object_inside_area(area, df_all)
-    df_street = anchors[anchors["id_street"].notna()]
-    df_area = anchors[anchors["id_area"].notna()]
+    df_street = anchors[anchors["street_id"].notna()]
+    df_area = anchors[anchors["area_id"].notna()]
     pois = df_osm[df_osm["geometry"].within(area)]["poi_id"]
     lateral_questions = make_question_composite(
         df_osm.loc[pois],

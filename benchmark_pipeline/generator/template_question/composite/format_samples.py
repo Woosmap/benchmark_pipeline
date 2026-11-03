@@ -131,8 +131,8 @@ def make_rows(
         pois = list(dict.fromkeys(ligne[colonne_pois]))
         row = {
             "index": pos,
-            "query_texte": ligne[colonne_question],
-            "pois": pois,
+            "query": ligne[colonne_question],
+            "answers": pois,
             **{colonne: ligne[colonne] for colonne in rows_target},
         }
         if not is_test:
@@ -153,8 +153,6 @@ def format_composit_samples(
         rng: Generator,
         rows_target: list[str],
         ratio_test: float = 0.1,
-        ratio_features: dict[int, float] | None = None,
-        ratio_category: dict[str, float] | None = None,
         nb_hard: int = 20,
         nb_unmatches: int = 1,
     ) -> tuple[list[Batch], NDArray]:

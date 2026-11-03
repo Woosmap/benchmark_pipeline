@@ -74,15 +74,15 @@ def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        results = near_sql(df_osm, anchor.x, anchor.y)
+        results = near_sql(df_osm, anchor.geometry.x, anchor.geometry.y)
         results = results[results["poi_id"] != anchor.poi_id]
         
         dic_benchmark["query"].append(f"pois near {anchor.poi_name}")
         dic_benchmark["anchor_index"].append(anchor.poi_id)
         dic_benchmark["anchor_name"].append(anchor.poi_name)
         dic_benchmark["anchor_category"].append(anchor.category)
-        dic_benchmark["anchor_x"].append(anchor.x)
-        dic_benchmark["anchor_y"].append(anchor.y)
+        dic_benchmark["anchor_x"].append(anchor.geometry.x)
+        dic_benchmark["anchor_y"].append(anchor.geometry.y)
         dic_benchmark["function"].append("near_sql")
         dic_benchmark["results_poi_id"].append(list(results.poi_id))
         dic_benchmark["results_poi_name"].append(list(results.poi_name))

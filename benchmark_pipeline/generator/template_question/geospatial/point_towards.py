@@ -35,7 +35,7 @@ def towards_b_sql(df, ax, ay, bx, by, half_width=70.0, distance_max=DISTANCE_MAX
         c'est la forme correcte en CRS projeté, et le modèle à recopier dans
         `pack_by_direction`.
     """
-    dx, dy = df["x"].to_numpy() - ax, df["y"].to_numpy() - ay
+    dx, dy = df.geometry.x.to_numpy() - ax, df.geometry.y.to_numpy() - ay
     center = (np.degrees(np.arctan2(bx - ax, by - ay)) + 360) % 360
     az = (np.degrees(np.arctan2(dx, dy)) + 360) % 360
     dist = np.hypot(dx, dy)
@@ -70,7 +70,7 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
             `make_question_nearsql`, plus `anchor_b_index`, `anchor_b_name`,
             `anchor_b_category`, `anchor_b_x`, `anchor_b_y`.
     """
-    xy = np.column_stack([df_osm.x.values, df_osm.y.values])   # (n, 2)
+    xy = np.column_stack([df_osm.geometry.x.values, df_osm.geometry.y.values])   # (n, 2)
     tree = cKDTree(xy)
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
@@ -84,13 +84,13 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        neighbour_positions = [position for position in tree.query_ball_point([anchor.x, anchor.y], 1000)
+        neighbour_positions = [position for position in tree.query_ball_point([anchor.geometry.x, anchor.geometry.y], 1000)
                                if pid[position] != anchor.poi_id]
         if not neighbour_positions:
             continue
         index_b = rng.choice(neighbour_positions)
         anchor_b = df_osm.iloc[index_b]
-        results = towards_b_sql(df_osm, anchor.x, anchor.y, anchor_b.x, anchor_b.y, half_width=half_width)
+        results = towards_b_sql(df_osm, anchor.geometry.x, anchor.geometry.y, anchor_b.geometry.x, anchor_b.geometry.y, half_width=half_width)
         results = results[results["poi_id"] != anchor.poi_id]
         results = results[results["poi_id"] != anchor_b.poi_id]
 
@@ -98,13 +98,13 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
         dic_benchmark["anchor_index"].append(anchor.poi_id)
         dic_benchmark["anchor_name"].append(anchor.poi_name)
         dic_benchmark["anchor_category"].append(anchor.category)
-        dic_benchmark["anchor_x"].append(anchor.x)
-        dic_benchmark["anchor_y"].append(anchor.y)
+        dic_benchmark["anchor_x"].append(anchor.geometry.x)
+        dic_benchmark["anchor_y"].append(anchor.geometry.y)
         dic_benchmark["anchor_b_index"].append(anchor_b.poi_id)
         dic_benchmark["anchor_b_name"].append(anchor_b.poi_name)
         dic_benchmark["anchor_b_category"].append(anchor_b.category)
-        dic_benchmark["anchor_b_x"].append(anchor_b.x)
-        dic_benchmark["anchor_b_y"].append(anchor_b.y)
+        dic_benchmark["anchor_b_x"].append(anchor_b.geometry.x)
+        dic_benchmark["anchor_b_y"].append(anchor_b.geometry.y)
         dic_benchmark["function"].append("towards_b_sql")
         dic_benchmark["results_poi_id"].append(list(results.poi_id))
         dic_benchmark["results_poi_name"].append(list(results.poi_name))
