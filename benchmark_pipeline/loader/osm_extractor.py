@@ -6,6 +6,8 @@ import osmnx as ox
 import pandas as pd
 import pyarrow as pa
 
+from benchmark_pipeline.path import CACHE_DIR, GOOGLE_PLACES_FILE, DATA_DIR
+
 
 def safe_to_parquet(gdf, path):
     """
@@ -47,14 +49,13 @@ def extract_woosmap_pois(bbox, features, use_cache=True):
     Returns:
         GeoDataFrame: POIs filtrés, projetés en EPSG:2154, avec colonne geometry.
     """
-    cache_path = f"~/Documents/code/benchmark_NL_POI/data/pois/pois_woosmap_{bbox}.parquet"
-    if os.path.exists(cache_path) and use_cache:
+    if os.path.exists(CACHE_DIR) and use_cache:
         print("lecture cache")
-        gdf = gpd.read_parquet(cache_path)
+        gdf = gpd.read_parquet(CACHE_DIR)
         return gdf
     else:
         records = []
-        with open('/Users/sese/Documents/code/benchmark_NL_POI/data/google_places_752452_1698_951_13.jl', 'r', encoding='utf-8') as f:
+        with open(GOOGLE_PLACES_FILE, 'r', encoding='utf-8') as f:
             for line in f:
                 records.append(json.loads(line))
         pois = pd.DataFrame(records)
@@ -71,7 +72,7 @@ def extract_woosmap_pois(bbox, features, use_cache=True):
             df_bbox = df_bbox[cols]
         gdf = gpd.GeoDataFrame(df_bbox, geometry=gpd.points_from_xy(df_bbox["lon"], df_bbox["lat"]), crs="EPSG:4326")
         gdf = gdf.to_crs(epsg=2154)
-        safe_to_parquet(gdf, cache_path)
+        safe_to_parquet(gdf, CACHE_DIR)
     return gdf
 
 
@@ -116,16 +117,17 @@ def extract_osm_pois(bbox, dic_tags, use_cache=True):
         GeoDataFrame: POIs nettoyés, projetés en EPSG:2154, avec colonnes
             lat, lon, x, y et category.
     """
-    cache_path = f"~/Documents/code/benchmark_NL_POI/data/pois/pois_osm_{bbox}.parquet"
-    if os.path.exists(cache_path) and use_cache:
+    path_pois = DATA_DIR / "pois" / f"pois_osm_{bbox}.parquet"
+    if os.path.exists(path_pois) and use_cache:
         print("lecture cache")
-        pois = gpd.read_parquet(cache_path)
+        pois = gpd.read_parquet(path_pois)
     else:
         pois = ox.features_from_bbox(
             bbox,
             tags=dic_tags
         )
-        #pois.to_parquet(cache_path)
+        path_pois.parent.mkdir(parents=True, exist_ok=True)
+        safe_to_parquet(pois, path_pois)
     pois["geometry"] = pois.geometry.centroid
     pois["lat"] = pois.geometry.y
     pois["lon"] = pois.geometry.x

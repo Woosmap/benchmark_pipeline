@@ -122,7 +122,7 @@ def make_rows(
             qui satisfont la relation spatiale mais pas tous les attributs.
 
     Returns:
-        DataFrame avec `index`, `question`, `pois`, les `rows_target`, et
+        DataFrame avec `index`, `query_texte`, `pois`, les `rows_target`, et
             `hard_pois` hors test.
     """
     rows = []

@@ -75,6 +75,7 @@ source = { editable = "." }
 dependencies = [
     { name = "duckdb" },
     { name = "geopandas" },
+    { name = "gseek" },
     { name = "matplotlib" },
     { name = "mlx" },
     { name = "mlx-lm" },
@@ -85,6 +86,8 @@ dependencies = [
     { name = "pyproj" },
     { name = "scipy" },
     { name = "shapely" },
+    { name = "torch" },
+    { name = "transformers" },
 ]
 
 [package.optional-dependencies]
@@ -107,6 +110,7 @@ requires-dist = [
     { name = "contextily", marker = "extra == 'viz'" },
     { name = "duckdb", specifier = ">=1.0" },
     { name = "geopandas", specifier = ">=1.0" },
+    { name = "gseek", editable = "../Gseek" },
     { name = "matplotlib" },
     { name = "mlx", specifier = ">=0.32.4" },
     { name = "mlx-lm", specifier = ">=0.32.2" },
@@ -118,6 +122,8 @@ requires-dist = [
     { name = "scipy" },
     { name = "sentence-transformers", marker = "extra == 'nlp'" },
     { name = "shapely", specifier = ">=2.0" },
+    { name = "torch", specifier = ">=2.14.0" },
+    { name = "transformers", specifier = ">=5.18.0" },
 ]
 provides-extras = ["viz", "nlp"]
 
@@ -618,6 +624,47 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/da/0c/b4e42a0495293f6c94364baba4c657c68bc8d8efec784259cc943f4ba28b/geopy-2.5.0.tar.gz", hash = "sha256:7b6c849f18108dcce4faa3d614e2801107b465f7b05fd3c1db9db12e225ae950", size = 122254, upload-time = "2026-07-12T19:50:06.051Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/66/e5/de8b557b279e31cdfb2070ac83eb45dc7e29bd93cd544128756f658e52c7/geopy-2.5.0-py3-none-any.whl", hash = "sha256:8ad8cc226b505ca4d272ae9a2eeba08b8a2c565fc9a04eaefc33ad49c32b51aa", size = 114619, upload-time = "2026-07-12T19:50:04.839Z" },
+]
+
+[[package]]
+name = "gseek"
+version = "0.1.0"
+source = { editable = "../Gseek" }
+dependencies = [
+    { name = "duckdb" },
+    { name = "geopandas" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "osmnx" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "pyproj" },
+    { name = "scipy" },
+    { name = "shapely" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "contextily", marker = "extra == 'viz'" },
+    { name = "duckdb", specifier = ">=1.0" },
+    { name = "geopandas", specifier = ">=1.0" },
+    { name = "matplotlib" },
+    { name = "numpy" },
+    { name = "osmnx", specifier = ">=2.0" },
+    { name = "pandas" },
+    { name = "pyarrow" },
+    { name = "pyproj" },
+    { name = "scipy" },
+    { name = "sentence-transformers", marker = "extra == 'nlp'" },
+    { name = "shapely", specifier = ">=2.0" },
+]
+provides-extras = ["viz", "nlp"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ipykernel" },
+    { name = "pytest" },
+    { name = "ruff" },
 ]
 
 [[package]]

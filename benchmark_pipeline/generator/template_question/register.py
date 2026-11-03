@@ -1,6 +1,10 @@
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+<<<<<<< Updated upstream
+=======
+
+>>>>>>> Stashed changes
 import numpy as np
 from pandas import DataFrame
 
@@ -43,6 +47,7 @@ def register(
     kwargs = asdict(conf)
     rng = np.random.default_rng(kwargs.pop("seed"))
 
+<<<<<<< Updated upstream
     train_set, test_set = formating_function(df_question, df_osm, rng, **kwargs)
     DataFrame(train_set).to_parquet(save_path / "question" / "train_set.parquet")
     DataFrame(test_set).to_parquet(save_path / "question" / "test_set.parquet")
@@ -58,5 +63,13 @@ def register(
     gdf_area = _modify_geo_column(df_area)
     gdf_area.to_parquet(save_path / "tables" / "df_area.parquet")
 
+=======
+    save_path = Path(save_path)
+    save_path.mkdir(parents=True, exist_ok=True)
+    DataFrame(train_set).to_parquet(save_path / "train_set.parquet")
+    DataFrame(test_set).to_parquet(save_path / "test_set.parquet")
+    df_question.to_pickle(save_path / "tables" / "df_question.pkl")
+    df_osm.to_parquet(save_path / "tables" / "df_osm.parquet")
+>>>>>>> Stashed changes
     with open(save_path / "config.json", "w") as f:
         json.dump(asdict(conf), f, indent=2)

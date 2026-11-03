@@ -16,7 +16,10 @@ from benchmark_pipeline.loader.data_cleaning.cooking_column import (
 )
 from benchmark_pipeline.loader.data_cleaning.serialize import serialize_poi
 from benchmark_pipeline.loader.osm_extractor import extract_osm_pois, get_category
+from benchmark_pipeline.path import CACHE_DIR
 from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
+
+ox.settings.cache_folder = CACHE_DIR
 
 
 def load_streets():
@@ -26,7 +29,6 @@ def load_streets():
     for name, g in streets.groupby("name")["geometry"]:
         u = unary_union(g.tolist())
         parts = list(u.geoms) if u.geom_type == "MultiLineString" else [u]
-        # regroupe les composantes qui se touchent ou sont à moins de 50 m
         buf = unary_union([p.buffer(50) for p in parts])
         clusters = list(buf.geoms) if buf.geom_type == "MultiPolygon" else [buf]
         for i, c in enumerate(clusters):
@@ -37,14 +39,13 @@ def load_streets():
             else: rows.append({"name": name, "geometry": geom})
 
     df_streets = gpd.GeoDataFrame(rows, crs=streets.crs)
-    #df_streets = df_streets[df_streets["part"]==0]
     df_streets["id_street"]= df_streets.index
     df_streets = df_streets[["id_street", "name", "geometry"]]
     df_streets = df_streets.rename(columns={"index": "id_street", "name": "street_name"})
     return df_streets
 
-def load_pois():
-    df_osm = extract_osm_pois(BBOX, CATEGORIES, use_cache=False)
+def load_pois(use_cache=False):
+    df_osm = extract_osm_pois(BBOX, CATEGORIES, use_cache=use_cache)
     df_osm = classify_cuisine_column(df_osm)
     poi_all_index = df_osm.index.tolist()
     df_osm["index"] = poi_all_index
@@ -56,8 +57,6 @@ def load_pois():
     return df_osm
 
 def add_area_category(area, dic_tags=AREA_TAGS):
-    # à appeler sur le GeoDataFrame brut : les colonnes de tags (`leisure`,
-    # `boundary`) dont la catégorie est déduite sont supprimées ensuite
     area["category"] = area.apply(lambda row: get_category(row, dic_tags), axis=1)
     return area
 
