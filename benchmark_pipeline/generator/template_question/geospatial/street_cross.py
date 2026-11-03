@@ -64,8 +64,7 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     """
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
-    for _ in range(nb_q):
-        id_street_a = rng.choice(df_streets["id_street"])
+    for id_street_a in rng.choice(df_streets["id_street"], size=min(len(df_streets), nb_q), replace=False):
         street_a = df_streets[df_streets["id_street"] == id_street_a].iloc[0]
         candidates = touching_streets(df_streets, street_a)
         if len(candidates) > 0:

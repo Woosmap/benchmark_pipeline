@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.generator.template_question.multihop.add_hop import add_backward_hop, add_lateral_hop
-from benchmark_pipeline.generator.template_question.multihop.make_multihop_text import make_text_multihop
 from benchmark_pipeline.config import MULTIHOP_COLUMNS
 
 
@@ -22,15 +21,18 @@ def make_multihop_questions(
         df_area,
         max_questions_per_node=3,
         seed=0,
+        df_multihop=None,
     ):
     """Build multihop questions following `question_template`, with `add_backward_hop` and `add_lateral_hop`.
 
     Args:
         max_questions_per_node (int): questions of a node the chain continues from; every question
             created by the hops stays in df_multihop.
+        df_multihop (DataFrame | None): multihop questions of previous calls; the new ones are appended.
 
     Returns:
-        tuple: labels of the last node, `df_question`, `df_multihop`.
+        tuple: labels of the last node, `df_question`, `df_multihop` without text
+            (call `make_text_multihop` once at the end).
     """
     df_question_light = (df_question
              .rename(columns={"results_features_pois_id": "answers"})
@@ -39,7 +41,7 @@ def make_multihop_questions(
              [MULTIHOP_COLUMNS])
     
     random_generator = np.random.default_rng(seed)
-    df_multihop = pd.DataFrame()
+    df_multihop = pd.DataFrame() if df_multihop is None else df_multihop
     nodes = sorted(question_template, reverse=True)
     backward_index = [id_question]
     for node in nodes[1:]:
@@ -57,4 +59,4 @@ def make_multihop_questions(
                 next_index += new_index
             backward_index = keep_questions(next_index, max_questions_per_node, random_generator)
     
-    return backward_index, df_question_light, make_text_multihop(df_multihop, df_question)
+    return backward_index, df_question_light, df_multihop

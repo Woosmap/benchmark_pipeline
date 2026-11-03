@@ -119,6 +119,8 @@ def add_lateral_hop(
     dic_query = dict(question["dic_query"] or {})
 
     df_new_qm = pd.DataFrame(new_rows).drop_duplicates("query_texte")
+    # df_question now holds the laterals: new labels must start after theirs
+    start = next_label(df_question, df_multihop)
     df_new_qm.insert(0, "index", list(range(start, start + len(df_new_qm))))
     df_new_qm["template"] = [dict(template) for _ in range(len(df_new_qm))]
     df_new_qm["dic_query"] = [{**dic_query, 1: [id_question] + [int(i) for i in laterals]}

@@ -38,7 +38,6 @@ class Feature(ABC):
                 dans une question, ou None si la valeur ne produit pas de texte utile.
         """
 
-
 class OutDoorSeating(Feature):
     """Feature indiquant la présence ou l'absence de places assises en terrasse."""
     COLUMN = "outdoor_seating"
@@ -62,6 +61,16 @@ class OutDoorSeating(Feature):
             return "without outdoor seating"
         if value=="terrace":
             return "with terrace"
+        if value=="sidewalk":
+            return "on sidewalk"
+        if value=="pedestrian_zone":
+            return "in pedestrian zone"
+        if value=="terrace":
+            return "with terrace"
+        if value=="parklet":
+                    return "with parklet"
+        if value=="veranda":
+                    return "with veranda"
         return None
 
 

@@ -46,8 +46,8 @@ def make_question_area_border(df_osm, df_area, min_size=20000, band=200, nb_q=11
     list_cat = df_osm["category"].unique()
 
     areas = df_area[df_area.geometry.area > min_size]
-    for _ in range(nb_q):
-        area = areas.loc[rng.choice(areas.index)]
+    for id_area in rng.choice(areas.index, size=min(len(areas), nb_q), replace=False):
+        area = areas.loc[id_area]
         results = pois_near_border(df_osm, area.geometry, band)
         if results.empty:
             continue

@@ -52,7 +52,7 @@ def make_question_street_along(df_osm, df_streets, max_dist=DISTANCE_STREET_MAX,
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     df_streets = df_streets[df_streets.geometry.length > min_length]
-    id_streets = rng.choice(df_streets.index, nb_q)
+    id_streets = rng.choice(df_streets.index, size=min(len(df_streets), nb_q), replace=False)
     for id_street in id_streets:
         street = df_streets.loc[id_street]
         results = along_street(df_osm, street.geometry, max_dist)

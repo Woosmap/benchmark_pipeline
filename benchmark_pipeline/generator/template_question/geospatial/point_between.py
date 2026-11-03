@@ -1,6 +1,5 @@
 from collections import defaultdict
 
-import duckdb
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
@@ -10,8 +9,7 @@ from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def between_ab_sql(df, ax, ay, bx, by, cat,
-                   corridor_m=200.0, con=None):
+def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=200.0):
     """Retourne les POIs d'une catégorie situés dans le corridor reliant deux points.
 
     Projette chaque POI dans le repère du segment A→B : `along` est l'abscisse
@@ -21,51 +19,37 @@ def between_ab_sql(df, ax, ay, bx, by, cat,
     l'avancement le long du segment.
 
     Args:
-        df (GeoDataFrame): POIs candidats en EPSG:2154.
+        df (GeoDataFrame): POIs candidats, avec `poi_id`, `poi_name`, `x` et `y`
+            en EPSG:2154.
         ax (float): Abscisse Lambert-93 du point A.
         ay (float): Ordonnée Lambert-93 du point A.
         bx (float): Abscisse Lambert-93 du point B.
         by (float): Ordonnée Lambert-93 du point B.
         cat (str | None): Catégorie de POI recherchée ; `None` ne filtre pas.
-        k (int): Nombre maximal de résultats retournés.
         corridor_m (float): Demi-largeur du corridor, en mètres.
-        con (duckdb.DuckDBPyConnection | None): Connexion à réutiliser.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist_a`, `dist_b`, `along`,
-            `cross_m`, triées par écart latéral puis avancement.
+            `cross_m`, `rank`, triées par écart latéral puis avancement.
     """
-    if con is None:
-        con = duckdb.connect()
-        con.sql("INSTALL spatial; LOAD spatial;")
-    flat = pd.DataFrame(df.drop(columns="geometry")).assign(geom_wkb=df.geometry.to_wkb())
-    con.register("poi", flat)
-
-    return con.execute("""
-        WITH ab AS (
-            SELECT $bx - $ax AS abx, $by - $ay AS aby,
-                   sqrt(pow($bx - $ax, 2) + pow($by - $ay, 2)) AS ab_len
-        ), g AS (
-            SELECT poi_id, poi_name, ST_GeomFromWKB(geom_wkb) AS geom
-            -- $cat vaut NULL quand on veut le corridor entier, toutes catégories.
-            FROM poi WHERE $cat IS NULL OR category = $cat
-        ), p AS (
-            SELECT poi_id, poi_name,
-                   ((ST_X(geom) - $ax) * ab.abx + (ST_Y(geom) - $ay) * ab.aby) / ab.ab_len AS along,
-                   abs((ST_X(geom) - $ax) * ab.aby - (ST_Y(geom) - $ay) * ab.abx) / ab.ab_len AS cross_m,
-                   sqrt(pow(ST_X(geom) - $ax, 2) + pow(ST_Y(geom) - $ay, 2)) AS dist_a,
-                   sqrt(pow(ST_X(geom) - $bx, 2) + pow(ST_Y(geom) - $by, 2)) AS dist_b,
-                   ab.ab_len
-            FROM g CROSS JOIN ab
-        )
-        SELECT poi_id, poi_name, dist_a, dist_b, along, cross_m,
-               row_number() OVER (ORDER BY cross_m, along) AS rank
-        FROM p
-        WHERE along BETWEEN 0 AND ab_len
-          AND cross_m <= $corr
-        ORDER BY cross_m, along
-    """, {"ax": ax, "ay": ay, "bx": bx, "by": by, "cat": cat,
-          "corr": corridor_m}).df()
+    candidates = df if cat is None else df[df["category"] == cat]
+    abx, aby = bx - ax, by - ay
+    ab_len = np.sqrt(abx ** 2 + aby ** 2)
+    px, py = candidates["x"].to_numpy() - ax, candidates["y"].to_numpy() - ay
+    along = (px * abx + py * aby) / ab_len
+    cross_m = np.abs(px * aby - py * abx) / ab_len
+    kept = np.flatnonzero((along >= 0) & (along <= ab_len) & (cross_m <= corridor_m))
+    # np.lexsort sorts on the last key first: cross_m, then along
+    kept = kept[np.lexsort((along[kept], cross_m[kept]))]
+    return pd.DataFrame({
+        "poi_id": candidates["poi_id"].to_numpy()[kept],
+        "poi_name": candidates["poi_name"].to_numpy()[kept],
+        "dist_a": np.hypot(px, py)[kept],
+        "dist_b": np.hypot(px - abx, py - aby)[kept],
+        "along": along[kept],
+        "cross_m": cross_m[kept],
+        "rank": np.arange(1, len(kept) + 1),
+    })
 
 @template("make_question_point_between")
 def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,

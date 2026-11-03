@@ -1,6 +1,5 @@
 from collections import defaultdict
 
-import duckdb
 import numpy as np
 import pandas as pd
 from scipy.spatial import cKDTree
@@ -9,8 +8,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def towards_b_sql(df, ax, ay, bx, by,
-                  half_width=70.0, con=None):
+def towards_b_sql(df, ax, ay, bx, by, half_width=70.0, distance_max=DISTANCE_MAX):
     """Retourne les POIs d'une catégorie situés dans la direction d'un point B depuis un point A.
 
     Généralise `pack_by_direction` en remplaçant la direction cardinale par
@@ -19,48 +17,40 @@ def towards_b_sql(df, ax, ay, bx, by,
     qu'il reste dans le cône.
 
     Args:
-        df (GeoDataFrame): POIs candidats en EPSG:2154.
+        df (GeoDataFrame): POIs candidats, avec `poi_id`, `poi_name`, `x` et `y`
+            en EPSG:2154.
         ax (float): Abscisse Lambert-93 du point A, origine du cône.
         ay (float): Ordonnée Lambert-93 du point A.
         bx (float): Abscisse Lambert-93 du point B, qui donne la direction.
         by (float): Ordonnée Lambert-93 du point B.
         half_width (float): Demi-ouverture du cône, en degrés.
-        con (duckdb.DuckDBPyConnection | None): Connexion à réutiliser.
+        distance_max (float | None): Max distance to A, in meters; `None` keeps every POI.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `dist` (mètres depuis A), `az`,
-            triées par distance croissante.
+            `rank`, triées par distance croissante.
 
     Note:
         Distance euclidienne et azimut planaire, sans correction de latitude :
         c'est la forme correcte en CRS projeté, et le modèle à recopier dans
         `pack_by_direction`.
     """
-    if con is None:
-        con = duckdb.connect()
-        con.sql("INSTALL spatial; LOAD spatial;")
-    flat = pd.DataFrame(df.drop(columns="geometry")).assign(geom_wkb=df.geometry.to_wkb())
-    con.register("poi", flat)
-
-    return con.execute("""
-        WITH ab AS (
-            SELECT (degrees(atan2($bx - $ax, $by - $ay)) + 360) % 360 AS center
-        ), g AS (
-            SELECT poi_id, poi_name, ST_GeomFromWKB(geom_wkb) AS geom
-            FROM poi 
-        ), d AS (
-            SELECT poi_id, poi_name,
-                   sqrt(pow(ST_X(geom) - $ax, 2) + pow(ST_Y(geom) - $ay, 2)) AS dist,
-                   (degrees(atan2(ST_X(geom) - $ax, ST_Y(geom) - $ay)) + 360) % 360 AS az
-            FROM g
-        )
-        SELECT d.poi_id, d.poi_name, d.dist, d.az,
-               row_number() OVER (ORDER BY d.dist) AS rank
-        FROM d CROSS JOIN ab
-        WHERE abs(((d.az - ab.center + 540)::DOUBLE % 360) - 180) <= $half
-        ORDER BY d.dist
-    """, {"ax": ax, "ay": ay, "bx": bx, "by": by,
-          "half": half_width}).df()
+    dx, dy = df["x"].to_numpy() - ax, df["y"].to_numpy() - ay
+    center = (np.degrees(np.arctan2(bx - ax, by - ay)) + 360) % 360
+    az = (np.degrees(np.arctan2(dx, dy)) + 360) % 360
+    dist = np.hypot(dx, dy)
+    keep = np.abs((az - center + 540) % 360 - 180) <= half_width
+    if distance_max is not None:
+        keep &= dist <= distance_max
+    kept = np.flatnonzero(keep)
+    kept = kept[np.argsort(dist[kept], kind="stable")]
+    return pd.DataFrame({
+        "poi_id": df["poi_id"].to_numpy()[kept],
+        "poi_name": df["poi_name"].to_numpy()[kept],
+        "dist": dist[kept],
+        "az": az[kept],
+        "rank": np.arange(1, len(kept) + 1),
+    })
 
 @template("make_question_point_towards")
 def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, seed=42):
@@ -94,8 +84,11 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        index_b = rng.choice([k for k in tree.query_ball_point([anchor.x, anchor.y], 1000)
-                                        if pid[k] != anchor.poi_id])
+        neighbour_positions = [position for position in tree.query_ball_point([anchor.x, anchor.y], 1000)
+                               if pid[position] != anchor.poi_id]
+        if not neighbour_positions:
+            continue
+        index_b = rng.choice(neighbour_positions)
         anchor_b = df_osm.iloc[index_b]
         results = towards_b_sql(df_osm, anchor.x, anchor.y, anchor_b.x, anchor_b.y, half_width=half_width)
         results = results[results["poi_id"] != anchor.poi_id]
