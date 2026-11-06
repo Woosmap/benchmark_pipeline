@@ -19,13 +19,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from benchmark_pipeline.generator.template_question.composite.format_samples import (
+from benchmark_pipeline.generator.composite.format_samples import (
     make_rows as make_rows_composite,
 )
-from benchmark_pipeline.generator.template_question.composite.generator_qcomposite import (
+from benchmark_pipeline.generator.composite.generator_qcomposite import (
     question_geo_semantic,
 )
-from benchmark_pipeline.generator.template_question.semantic.batcher import (
+from benchmark_pipeline.generator.semantic.batcher import (
     make_rows as make_rows_semantique,
 )
 

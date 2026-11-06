@@ -4,7 +4,7 @@ from dataclasses import asdict, dataclass
 import numpy as np
 from pandas import DataFrame
 
-from benchmark_pipeline.generator.template_question.semantic.batcher import (
+from benchmark_pipeline.generator.semantic.batcher import (
     make_benchmark_question,
 )
 

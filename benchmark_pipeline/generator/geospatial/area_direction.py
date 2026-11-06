@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def segregate_pois(pois, geom, list_direction):
@@ -13,10 +13,10 @@ def segregate_pois(pois, geom, list_direction):
     dy = pois.geometry.y - c.y
     masks = {"north": dy >= dx.abs(), "south": -dy >= dx.abs(),
              "east":  dx >= dy.abs(), "west":  -dx >= dy.abs()}
-    return {direction: pois[masks[direction]] for direction in list_direction} 
+    return {direction: pois[masks[direction]] for direction in list_direction}
 
 @template("make_question_area_direction")
-def make_question_area_direction(df_osm, df_area, list_direction=DIRECTIONS, min_size=AREA_DIRECTION_MIN_SIZE, nb_q=200, seed=42):
+def make_question_area_direction(df_osm, df_area, list_direction=DIRECTIONS, min_size=AREA_DIRECTION_MIN_SIZE, nb_q=200, seed=SEED):
     """Génère les questions de position relative dans une zone « X au nord de Z ».
 
     Pour chaque catégorie cible, tire des zones et décline chacune sur les quatre

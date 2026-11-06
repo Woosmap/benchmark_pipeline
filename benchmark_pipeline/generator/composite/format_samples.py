@@ -6,7 +6,10 @@ from typing import Any, TypedDict
 from numpy.random import Generator
 from numpy.typing import NDArray
 from pandas import DataFrame, Series
-from benchmark_pipeline.config import NB_HARD_QUESTION, NB_HARD_UNMATCHED, RATIO_TEST, ROWS_TARGET
+from benchmark_pipeline.config import (
+    ANSWERS_COLUMN, NB_HARD_QUESTION, NB_HARD_UNMATCHED, QUESTION_COLUMN, RATIO_TEST, ROWS_TARGET,
+    SPATIAL_ANSWERS_COLUMN,
+)
 
 PoiId = int | tuple
 
@@ -154,15 +157,22 @@ def format_composit_samples(
         rng: Generator,
         rows_target: list[str] = ROWS_TARGET,
         ratio_test: float = RATIO_TEST,
-        ratio_feature = None,
         nb_hard: int = NB_HARD_QUESTION,
         nb_unmatches: int = NB_HARD_UNMATCHED,
+        colonne_question: str = QUESTION_COLUMN,
+        colonne_pois: str = ANSWERS_COLUMN,
+        colonne_pois_spatiaux: str = SPATIAL_ANSWERS_COLUMN,
     ) -> tuple[list[Batch], NDArray]:
     """
-    fonction qui porend le dataset question but et qui renvoit un dataframe au bon format de clonne 
+    fonction qui porend le dataset question but et qui renvoit un dataframe au bon format de clonne
     avec les spécifications de la conf passée en arguments
+
+    colonne_question, colonne_pois, colonne_pois_spatiaux : passed to `make_rows`.
     """
     train, test = split_train_test(len(df_question), ratio_test, rng)
-    train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches, rows_target=rows_target)
-    test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, rows_target=rows_target, is_test=True)
+    columns = {"colonne_question": colonne_question, "colonne_pois": colonne_pois,
+               "colonne_pois_spatiaux": colonne_pois_spatiaux}
+    train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches, rows_target=rows_target, **columns)
+    test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, rows_target=rows_target, is_test=True,
+                         **columns)
     return train_set, test_set

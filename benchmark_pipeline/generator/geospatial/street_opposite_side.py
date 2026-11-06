@@ -5,7 +5,7 @@ import pandas as pd
 import shapely
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def side_of_street(street_geom, pt, step=OPPOSITE_SIDE_TANGENT_STEP):
@@ -96,7 +96,7 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=OPPOSITE_SIDE_NB_RESULTS,
     return out
 
 @template("make_question_street_opposite_side")
-def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, max_tries=MAX_TRIES,
+def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=SEED, max_tries=MAX_TRIES,
                                        reference_radius=OPPOSITE_SIDE_REFERENCE_RADIUS):
     """Génère les questions de vis-à-vis « X en face de Y, de l'autre côté de la rue R ».
 

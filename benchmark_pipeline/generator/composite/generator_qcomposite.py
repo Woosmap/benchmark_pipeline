@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import FEATURES, MANDATORY_FEATURES
-from benchmark_pipeline.generator.template_question.ratio import allocate
-from benchmark_pipeline.generator.template_question.registry import get_template
-from benchmark_pipeline.config import LIST_TEMPLATE
+from benchmark_pipeline.generator.ratio import allocate
+from benchmark_pipeline.generator.registry import get_template
+from benchmark_pipeline.config import LIST_TEMPLATE, TEMPLATE_PARAMS
 from benchmark_pipeline.config import SEED
 
 
@@ -72,7 +72,7 @@ def _ligne_composite(question, colonnes, valeurs, pois, features=FEATURES):
 
 
 def question_geo_semantic(df_question, df_osm, feature_cols, ratio_features,
-                          nb_q_by_feat, part_avec_features=1.0, seed=42):
+                          nb_q_by_feat, part_avec_features=1.0, seed=SEED):
     """Croise chaque question spatiale avec des contraintes d'attributs.
 
     Args:
@@ -111,7 +111,7 @@ def question_geo_semantic(df_question, df_osm, feature_cols, ratio_features,
     return pd.DataFrame(lignes)
 
 
-def _appeler_template(nom, nb_q, sources, seed):
+def _appeler_template(nom, nb_q, sources, seed, params):
     """Appelle un générateur du REGISTRY avec les seules sources qu'il accepte.
 
     Args:
@@ -120,13 +120,14 @@ def _appeler_template(nom, nb_q, sources, seed):
         sources (dict): `df_osm`, `df_area` et `df_streets` disponibles ; chaque
             template n'en déclare qu'une partie dans sa signature.
         seed (int): Graine du générateur.
+        params (dict): Other keyword arguments of the generator.
 
     Returns:
         DataFrame: Les questions spatiales produites par ce template.
     """
     generateur = get_template(nom)
     attendues = inspect.signature(generateur).parameters
-    return generateur(nb_q=nb_q, seed=seed, **{k: v for k, v in sources.items() if k in attendues})
+    return generateur(nb_q=nb_q, seed=seed, **params, **{k: v for k, v in sources.items() if k in attendues})
 
 
 def make_question_composite(
@@ -140,6 +141,8 @@ def make_question_composite(
         feature_cols=FEATURES,
         seed=SEED,
         is_paraphrase=False,
+        list_template=LIST_TEMPLATE,
+        template_params=TEMPLATE_PARAMS,
     ):
     """Produit le jeu complet de questions composites.
 
@@ -157,6 +160,8 @@ def make_question_composite(
         part_avec_features (float): Part des questions à enrichir, dans [0, 1].
         feature_cols (list[str] | list[Feature]): Colonnes d'attributs éligibles.
         seed (int): Graine des générateurs spatiaux et du tirage sémantique.
+        list_template (list[str]): REGISTRY keys of the spatial generators to run.
+        template_params (dict[str, dict]): Keyword arguments of each generator, by REGISTRY key.
 
     Returns:
         DataFrame: Les questions composites. `query` garde l'énoncé spatial seul,
@@ -165,7 +170,7 @@ def make_question_composite(
     """
     sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
     df_geo_q = pd.concat(
-        [_appeler_template(nom, nb_q_by_temp, sources, seed) for nom in LIST_TEMPLATE],
+        [_appeler_template(nom, nb_q_by_temp, sources, seed, template_params.get(nom, {})) for nom in list_template],
         ignore_index=True)
 
     if is_paraphrase:

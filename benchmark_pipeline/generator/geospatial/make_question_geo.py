@@ -2,7 +2,7 @@ from itertools import combinations
 
 import pandas as pd
 
-from benchmark_pipeline.generator.template_question.geospatial import *
+from benchmark_pipeline.generator.geospatial import *
 
 
 def make_question_geo(df, nb_q, list_template=None):

@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def outside_area(area, category, pois, cat_col="category"):
@@ -29,7 +29,7 @@ def outside_area(area, category, pois, cat_col="category"):
     return sel.sort_values("dist").reset_index(drop=True)
 
 @template("make_question_area_outside")
-def make_question_area_outside(df_osm, df_area, min_size=AREA_OUTSIDE_MIN_SIZE, nb_q=110, seed=42, max_tries=MAX_TRIES):
+def make_question_area_outside(df_osm, df_area, min_size=AREA_OUTSIDE_MIN_SIZE, nb_q=110, seed=SEED, max_tries=MAX_TRIES):
     """Génère les questions d'exclusion « X hors de la zone Z ».
 
     Même structure que `make_question_insidearea`, avec le complémentaire de la

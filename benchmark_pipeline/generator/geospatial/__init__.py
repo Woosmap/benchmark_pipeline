@@ -1,6 +1,6 @@
 """Générateurs de questions de type A.
 
-Importer ce package suffit à peupler `benchmark_generator.template_question.registry.REGISTRY` :
+Importer ce package suffit à peupler `benchmark_pipeline.generator.registry.REGISTRY` :
 chaque module ci-dessous applique `@template` à sa fonction `make_question_*`,
 et un décorateur ne s'exécute qu'à l'import de son module.
 """

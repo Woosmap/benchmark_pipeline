@@ -7,7 +7,7 @@ import shapely
 from matplotlib.patches import Ellipse
 
 from benchmark_pipeline.generator.targets.ellypses import get_ellypse
-from benchmark_pipeline.generator.template_question.composite.format_samples import make_rows
+from benchmark_pipeline.generator.composite.format_samples import make_rows
 
 
 ANCRES_POINTS = (("anchor_x", "anchor_y", "anchor_name"),

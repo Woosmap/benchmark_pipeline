@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 CARDINAL_AZ = {
     "north": 0, "east": 90,
@@ -49,7 +49,8 @@ def pack_by_direction(df, x, y, distance_max=DISTANCE_MAX):
 
 
 @template("make_question_point_near_cardinal")
-def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=DIRECTIONS, nb_q=110, seed=42):
+def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=DIRECTIONS, nb_q=110, seed=SEED,
+                                      distance_max=DISTANCE_MAX):
     """Génère les questions de direction cardinale « X au nord de Y ».
 
     Args:
@@ -58,6 +59,7 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=DIRECTI
         list_direction (list[str]): Directions à décliner, clés de `CARDINAL_AZ`.
         nb_q (int): Nombre d'ancres tirées, en alternant les catégories.
         seed (int): Graine du générateur aléatoire.
+        distance_max (float): Max distance of an answer to the anchor, in meters.
 
     Returns:
         DataFrame: Une ligne par (ancre, direction). Mêmes colonnes que
@@ -74,7 +76,7 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=DIRECTI
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        voisins = pack_by_direction(df_osm, anchor.geometry.x, anchor.geometry.y)
+        voisins = pack_by_direction(df_osm, anchor.geometry.x, anchor.geometry.y, distance_max=distance_max)
         voisins = voisins[voisins["poi_id"] != anchor.poi_id]
         for d in list_direction:
             results = voisins[voisins["direction"] == d]
@@ -98,5 +100,5 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=DIRECTI
             dic_benchmark["anchors_type"].append(["point"])
             dic_benchmark["anchors_name"].append([anchor.poi_name])
             dic_benchmark["anchors_id"].append([anchor.poi_id])
-            
+
     return pd.DataFrame(dic_benchmark)

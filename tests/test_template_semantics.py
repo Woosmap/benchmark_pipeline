@@ -20,7 +20,7 @@ sera réparé.
 import numpy as np
 import pytest
 
-from benchmark_pipeline.generator.template_question.schema import (
+from benchmark_pipeline.generator.schema import (
     TEMPLATES_BY_NAME,
     _as_list,
 )
@@ -160,7 +160,7 @@ def test_point_near_cardinal_stays_in_its_quadrant(run_template, df_osm):
     forme tout en plaçant « nord » à l'est.
     """
     bench = bench_of("point_near_cardinal", run_template)
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
+    from benchmark_pipeline.generator.geospatial.point_near_cardinal import (
         CARDINAL_AZ,
     )
 
@@ -480,7 +480,7 @@ def test_street_opposite_side_is_really_on_the_other_side(run_template, df_osm):
     produit vectoriel ici ne testerait que ma propre réimplémentation. En
     revanche les deux seuils (40 m à la rue, 80 m le long) sont recalculés.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_opposite_side import (
+    from benchmark_pipeline.generator.geospatial.street_opposite_side import (
         side_of_street,
     )
 

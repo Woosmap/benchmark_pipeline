@@ -26,7 +26,7 @@ import pathlib
 
 import pytest
 
-from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
+from benchmark_pipeline.generator.schema import TEMPLATE_REGISTRY
 from tests.known_defects import DEAD_IMPORTS
 
 ELLYPSES = "benchmark_pipeline.generator.targets.ellypses"
@@ -196,7 +196,7 @@ def test_near_metric_ellipse_is_exactly_the_announced_disc(ellypses,
     exactement — le rayon est dans l'énoncé. Les autres branches reposent sur
     des constantes choisies à la main ; celle-ci est vérifiable.
     """
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+    from benchmark_pipeline.generator.schema import TEMPLATES_BY_NAME
 
     bench = run_template(TEMPLATES_BY_NAME["point_near_metric"])
     for i, row in bench.iterrows():
@@ -251,7 +251,7 @@ def test_get_ellypse_rejects_an_unknown_function(ellypses):
 
 def test_add_ellypse_adds_one_ellipse_per_question(ellypses, run_template):
     """`add_ellypse` ajoute une colonne, une ellipse par ligne."""
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+    from benchmark_pipeline.generator.schema import TEMPLATES_BY_NAME
 
     bench = run_template(TEMPLATES_BY_NAME["point_near"]).copy()
     out = ellypses.add_ellypse(bench)
@@ -333,7 +333,7 @@ def test_get_anchors_collects_the_context_labels(mask_anchors, run_template):
     sortir, et rien d'autre — une colonne de catégorie ou de coordonnée
     marquerait des tokens qui ne sont pas des entités.
     """
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+    from benchmark_pipeline.generator.schema import TEMPLATES_BY_NAME
 
     bench = run_template(TEMPLATES_BY_NAME["point_between"])
     row = bench.iloc[0]
@@ -351,7 +351,7 @@ def test_get_anchors_collects_the_reference_poi_of_opposite_side(mask_anchors,
     jamais `poi_y_name` : c'est le seul libellé cité par un énoncé qui échappe
     au masque.
     """
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+    from benchmark_pipeline.generator.schema import TEMPLATES_BY_NAME
 
     bench = run_template(TEMPLATES_BY_NAME["street_opposite_side"])
     row = bench.iloc[0]

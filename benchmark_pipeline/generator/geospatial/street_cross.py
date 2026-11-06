@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def touching_streets(df_streets, street, tol=STREET_CROSS_TOLERANCE):
@@ -47,7 +47,8 @@ def cross_streets(df, street_geom_a, street_geom_b, distance_max=DISTANCE_MAX):
     return out
 
 @template("make_question_street_cross")
-def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
+def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=SEED, tol=STREET_CROSS_TOLERANCE,
+                               distance_max=DISTANCE_MAX):
     """Génère les questions de carrefour « X au croisement de R1 et R2 ».
 
     Args:
@@ -55,6 +56,8 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
         df_streets (GeoDataFrame): Rues, avec `name` et `geometry` en EPSG:2154.
         nb_q (int): Nombre total de questions visé, stratifié par catégorie cible.
         seed (int): Graine du générateur aléatoire.
+        tol (float): Passed to `touching_streets`.
+        distance_max (float): Passed to `cross_streets`.
 
     Returns:
         DataFrame: Une ligne par question. Colonnes `query`, `category_query`,
@@ -66,11 +69,11 @@ def make_question_street_cross(df_osm, df_streets, nb_q=110, seed=42):
     rng = np.random.default_rng(seed)
     for id_street_a in rng.choice(df_streets["street_id"], size=min(len(df_streets), nb_q), replace=False):
         street_a = df_streets[df_streets["street_id"] == id_street_a].iloc[0]
-        candidates = touching_streets(df_streets, street_a)
+        candidates = touching_streets(df_streets, street_a, tol=tol)
         if len(candidates) > 0:
             id_street_b = rng.choice(candidates["street_id"])
             street_b = candidates[candidates["street_id"] == id_street_b].iloc[0]
-            results = cross_streets(df_osm, street_a.geometry, street_b.geometry)
+            results = cross_streets(df_osm, street_a.geometry, street_b.geometry, distance_max=distance_max)
 
             dic_benchmark["query"].append(f"pois at the intersection of  {street_a['street_name']} and {street_b['street_name']}")
             dic_benchmark["street_a_index"].append(id_street_a)

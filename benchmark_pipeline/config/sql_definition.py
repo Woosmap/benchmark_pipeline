@@ -32,3 +32,18 @@ OPPOSITE_SIDE_NB_RESULTS = 100                     # street_opposite_side: k
 OPPOSITE_SIDE_MAX_ALONG = 80.0                     # street_opposite_side
 OPPOSITE_SIDE_MAX_CROSS = 40.0                     # street_opposite_side
 OPPOSITE_SIDE_REFERENCE_RADIUS = 40                # street_opposite_side: reference POI near the street
+
+# Keyword arguments passed to each template of LIST_TEMPLATE by make_question_composite
+TEMPLATE_PARAMS = {
+    "make_question_area_border": {"min_size": AREA_BORDER_MIN_SIZE, "band": AREA_BORDER_BAND},
+    "make_question_area_inside": {"min_size": AREA_INSIDE_MIN_SIZE},
+    "make_question_area_direction": {"list_direction": DIRECTIONS, "min_size": AREA_DIRECTION_MIN_SIZE},
+    "make_question_point_between": {"corridor_m": BETWEEN_CORRIDOR, "distance_max": DISTANCE_MAX,
+                                    "nb_ancres_candidates": BETWEEN_NB_CANDIDATE_ANCHORS},
+    "make_question_point_near_cardinal": {"list_direction": DIRECTIONS, "distance_max": DISTANCE_MAX},
+    "make_question_point_near_metric": {"list_distance": METRIC_DISTANCES},
+    "make_question_point_near": {"distance_max": DISTANCE_MAX},
+    "make_question_point_towards": {"half_width": TOWARDS_HALF_WIDTH, "distance_max": DISTANCE_MAX},
+    "make_question_street_along": {"max_dist": DISTANCE_STREET_MAX, "min_length": STREET_ALONG_MIN_LENGTH},
+    "make_question_street_cross": {"tol": STREET_CROSS_TOLERANCE, "distance_max": DISTANCE_MAX},
+}

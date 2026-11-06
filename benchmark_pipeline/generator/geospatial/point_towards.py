@@ -5,7 +5,7 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def towards_b_sql(df, ax, ay, bx, by, half_width=TOWARDS_HALF_WIDTH, distance_max=DISTANCE_MAX):
@@ -53,7 +53,7 @@ def towards_b_sql(df, ax, ay, bx, by, half_width=TOWARDS_HALF_WIDTH, distance_ma
     })
 
 @template("make_question_point_towards")
-def make_question_point_towards(df_osm, ratio=None, half_width=TOWARDS_HALF_WIDTH, nb_q=110, seed=42,
+def make_question_point_towards(df_osm, ratio=None, half_width=TOWARDS_HALF_WIDTH, nb_q=110, seed=SEED,
                                 distance_max=DISTANCE_MAX):
     """Génère les questions directionnelles « X près de A en allant vers B ».
 
@@ -92,7 +92,8 @@ def make_question_point_towards(df_osm, ratio=None, half_width=TOWARDS_HALF_WIDT
             continue
         index_b = rng.choice(neighbour_positions)
         anchor_b = df_osm.iloc[index_b]
-        results = towards_b_sql(df_osm, anchor.geometry.x, anchor.geometry.y, anchor_b.geometry.x, anchor_b.geometry.y, half_width=half_width)
+        results = towards_b_sql(df_osm, anchor.geometry.x, anchor.geometry.y, anchor_b.geometry.x, anchor_b.geometry.y, half_width=half_width,
+                                distance_max=distance_max)
         results = results[results["poi_id"] != anchor.poi_id]
         results = results[results["poi_id"] != anchor_b.poi_id]
 

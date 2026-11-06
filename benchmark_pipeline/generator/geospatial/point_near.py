@@ -5,7 +5,7 @@ import pandas as pd
 from shapely.geometry import Point
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def near_sql(df, x, y, distance_max=DISTANCE_MAX, cat=None):
@@ -39,7 +39,7 @@ def near_sql(df, x, y, distance_max=DISTANCE_MAX, cat=None):
     return results.sort_values("dist").reset_index(drop=True)
 
 @template("make_question_point_near")
-def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
+def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=SEED, distance_max=DISTANCE_MAX):
     """Génère les questions de proximité simple « X près de Y ».
 
     Répartit le quota sur la catégorie de l'ancre, de sorte que les classes
@@ -53,6 +53,7 @@ def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
         ratio (dict[str, float] | None): Poids par catégorie d'ancre ; uniforme si None.
         nb_q (int): Nombre total de questions visé, stratifié par catégorie d'ancre.
         seed (int): Graine du générateur aléatoire.
+        distance_max (float): Max distance of an answer to the anchor, in meters.
 
     Returns:
         DataFrame: Une ligne par question. Contexte `query`, `anchor_index`,
@@ -74,7 +75,7 @@ def make_question_point_near(df_osm, ratio=None, nb_q=110, seed=42):
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        results = near_sql(df_osm, anchor.geometry.x, anchor.geometry.y)
+        results = near_sql(df_osm, anchor.geometry.x, anchor.geometry.y, distance_max=distance_max)
         results = results[results["poi_id"] != anchor.poi_id]
         
         dic_benchmark["query"].append(f"pois near {anchor.poi_name}")

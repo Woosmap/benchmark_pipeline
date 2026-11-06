@@ -72,7 +72,7 @@ def test_point_near_metric_honours_nb_q(df_osm, nb_q):
     autre forme — le quota était divisé par la *somme* au lieu du produit — et
     le refactor l'avait réintroduite en supprimant la division.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_metric import (
+    from benchmark_pipeline.generator.geospatial.point_near_metric import (
         make_question_point_near_metric,
     )
 
@@ -92,7 +92,7 @@ def test_point_near_cardinal_honours_nb_q(df_osm, nb_q):
     sont consécutifs, et couper dans le tas amputerait les dernières ancres de
     leurs directions.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
+    from benchmark_pipeline.generator.geospatial.point_near_cardinal import (
         make_question_point_near_cardinal,
     )
 
@@ -113,7 +113,7 @@ def test_area_direction_honours_nb_q(df_osm, df_area, nb_q):
     passé par un stade faux mais prévisible avant d'être plafonné,
     cf. `test_area_direction_volume_grows_with_nb_q`.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
+    from benchmark_pipeline.generator.geospatial.area_direction import (
         make_question_area_direction,
     )
 
@@ -133,7 +133,7 @@ def test_area_direction_volume_grows_with_nb_q(df_osm, df_area):
     est maintenant une simple boucle sur `nb_q` zones — mesuré 40, 56 et 72
     pour nb_q 10, 14 et 18. Le test reste comme garde-fou.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
+    from benchmark_pipeline.generator.geospatial.area_direction import (
         make_question_area_direction,
     )
 
@@ -157,7 +157,7 @@ def test_point_between_honours_nb_q(df_osm):
     aujourd'hui le seul template dont le volume est exact — d'où ce test de
     non-régression, qui fixe la référence pour les autres.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.point_between import (
+    from benchmark_pipeline.generator.geospatial.point_between import (
         make_question_point_between,
     )
 
@@ -177,10 +177,10 @@ def test_point_between_has_no_empty_answers_at_full_size(df_osm):
     (3 questions vides sur 130) — c'est là qu'une régression se verrait, pas à
     `nb_q=10`.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.point_between import (
+    from benchmark_pipeline.generator.geospatial.point_between import (
         make_question_point_between,
     )
-    from benchmark_pipeline.generator.template_question.schema import _as_list
+    from benchmark_pipeline.generator.schema import _as_list
 
     bench = make_question_point_between(df_osm, nb_q=110, seed=42)
     empty = [i for i, row in bench.iterrows()
@@ -208,7 +208,7 @@ def test_area_templates_survive_a_small_area_corpus(df_osm, df_area, template):
     import importlib
 
     module = importlib.import_module(
-        f"benchmark_pipeline.generator.template_question.geospatial.{template}"
+        f"benchmark_pipeline.generator.geospatial.{template}"
     )
     generateur = getattr(module, f"make_question_{template}")
 
@@ -227,7 +227,7 @@ def test_area_inside_can_draw_every_area(df_osm, df_area):
     Conséquence pour le benchmark : la couverture spatiale du jeu est décidée
     par l'ordre des lignes de `df_area`, pas par le tirage.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_inside import (
+    from benchmark_pipeline.generator.geospatial.area_inside import (
         make_question_area_inside,
     )
 
@@ -257,7 +257,7 @@ def test_point_near_metric_publishes_only_its_own_radius(df_osm):
     lignes rigoureusement identiques) là où `test_benchmark_is_coherent` n'en
     voyait que les symptômes, doublons et distances décroissantes.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_metric import (
+    from benchmark_pipeline.generator.geospatial.point_near_metric import (
         make_question_point_near_metric,
     )
 
@@ -282,7 +282,7 @@ def test_border_area_filters_by_the_requested_category(df_osm, df_area):
     catégorie, alors que l'énoncé et `category_query` en annoncent une. Mesuré :
     les 10 questions d'un tirage à nb_q=10 contiennent des POIs hors catégorie.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_border import (
+    from benchmark_pipeline.generator.geospatial.area_border import (
         make_question_area_border,
     )
 
@@ -317,7 +317,7 @@ def test_area_direction_rank_is_a_ranking(df_osm, df_area):
     pas quel critère le template *devrait* employer (distance au centroïde,
     avancement le long de l'axe), mais on sait qu'il n'en emploie aucun.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
+    from benchmark_pipeline.generator.geospatial.area_direction import (
         make_question_area_direction,
     )
 
@@ -349,7 +349,7 @@ def test_border_area_separates_interior_from_boundary(df_osm, df_area):
     catégories à une question qui en demandait une. Le `skip` ci-dessous couvre
     le cas où la strate retenue serait trop petite pour comparer.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_border import (
+    from benchmark_pipeline.generator.geospatial.area_border import (
         pois_near_border,
     )
 
@@ -396,7 +396,7 @@ def test_segregate_pois_rejects_unknown_directions(df_osm, df_area, bogus):
     dictionnaire de masques, donc lève KeyError — ce test garde la correction,
     parce que la faute d'origine est invisible à la relecture.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.area_direction import (
+    from benchmark_pipeline.generator.geospatial.area_direction import (
         segregate_pois,
     )
 
@@ -421,7 +421,7 @@ def test_point_near_cardinal_accepts_any_nb_q(df_osm, nb_q):
     inévaluable. Rendre moins est permis ; lever ne l'est pas, et c'est cela
     qu'on vérifie ici.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import (
+    from benchmark_pipeline.generator.geospatial.point_near_cardinal import (
         make_question_point_near_cardinal,
     )
 
@@ -445,7 +445,7 @@ def test_opposite_side_handles_multilinestring_streets(df_osm):
     place ou un carrefour — et le reste du module sait les traiter, puisque
     `side_of_street` et `opposite_side` prennent explicitement `geoms[0]`.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_opposite_side import (
+    from benchmark_pipeline.generator.geospatial.street_opposite_side import (
         make_question_street_opposite_side,
     )
 
@@ -481,7 +481,7 @@ def test_touching_streets_only_returns_real_crossings():
     `intersection()` est alors vide, et `distance()` contre une géométrie vide
     vaut NaN : toute la vérité terrain de la question perd son ordre.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_cross import (
+    from benchmark_pipeline.generator.geospatial.street_cross import (
         touching_streets,
     )
 
@@ -515,7 +515,7 @@ def test_street_modules_agree_on_street_identity(df_osm, df_streets):
     que fait n'importe quel filtrage en amont — le second se trompe de rue en
     silence, ou lève.
     """
-    from benchmark_pipeline.generator.template_question.geospatial.street_cross import (
+    from benchmark_pipeline.generator.geospatial.street_cross import (
         make_question_street_cross,
     )
 
@@ -548,7 +548,7 @@ def test_allocate_distributes_exactly_n():
     benchmark ne ferait plus la taille commandée. C'est exactement ce que fait
     le `nb_q // len(list_cat)` d'`area_outside` et consorts.
     """
-    from benchmark_pipeline.generator.template_question.ratio import allocate
+    from benchmark_pipeline.generator.ratio import allocate
 
     for n in (0, 1, 7, 10, 110, 1000):
         counts = allocate(n, {c: 1 for c in "abcde"})
@@ -560,7 +560,7 @@ def test_allocate_distributes_exactly_n():
 
 def test_allocate_respects_proportions():
     """Les parts suivent les poids demandés."""
-    from benchmark_pipeline.generator.template_question.ratio import allocate
+    from benchmark_pipeline.generator.ratio import allocate
 
     assert allocate(10, {"a": 0.1, "b": 0.3, "c": 0.6}) == {"a": 1, "b": 3, "c": 6}
 
@@ -572,7 +572,7 @@ def test_allocate_accepts_raw_weights():
     `{cat: 1 for cat in list_cat}` suffit à demander l'équirépartition, sans
     division préalable.
     """
-    from benchmark_pipeline.generator.template_question.ratio import allocate
+    from benchmark_pipeline.generator.ratio import allocate
 
     assert allocate(10, {"a": 1, "b": 3, "c": 6}) == allocate(
         10, {"a": 0.1, "b": 0.3, "c": 0.6}
@@ -586,7 +586,7 @@ def test_allocate_spreads_the_remainder_over_the_largest_fractions():
     unité à répartir. La méthode la donne à la première par ordre de reste
     décroissant — déterministe, donc rejouable.
     """
-    from benchmark_pipeline.generator.template_question.ratio import allocate
+    from benchmark_pipeline.generator.ratio import allocate
 
     counts = allocate(10, {c: 1 for c in "abc"})
     assert sum(counts.values()) == 10
@@ -607,7 +607,7 @@ def test_allocate_rejects_weights_that_sum_to_zero():
     `allocate` lève bien ici. Ce test fixe ce comportement, pour que la faute
     reste bruyante au lieu de produire un benchmark vide en silence.
     """
-    from benchmark_pipeline.generator.template_question.ratio import allocate
+    from benchmark_pipeline.generator.ratio import allocate
 
     with pytest.raises(ZeroDivisionError):
         allocate(10, {c: 1 // 5 for c in "abcde"})
@@ -629,7 +629,7 @@ def test_every_template_module_imports_cleanly():
     """
     import importlib
 
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.schema import TEMPLATE_REGISTRY
 
     for template in TEMPLATE_REGISTRY:
         module = importlib.import_module(template.module)
@@ -646,7 +646,7 @@ def test_area_name_is_the_only_spelling_of_the_area_label():
     relit la source pour que l'orthographe fautive ne revienne pas par
     copier-coller d'un module à l'autre.
     """
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+    from benchmark_pipeline.generator.schema import TEMPLATES_BY_NAME
     from tests.conftest import template_source
 
     for name in ("area_inside", "area_outside", "area_border", "area_direction"):

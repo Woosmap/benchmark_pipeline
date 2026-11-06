@@ -291,7 +291,7 @@ def coherence_problems(bench, template, df_osm):
     Returns:
         list[str]: Messages d'incohérence, vide si le benchmark est cohérent.
     """
-    from benchmark_pipeline.generator.template_question.schema import validate_benchmark
+    from benchmark_pipeline.generator.schema import validate_benchmark
 
     # Cette fonction injectait un faux `category_query` aux templates sans
     # catégorie, puis filtrait les plaintes « hors catégorie » qu'elle venait de
@@ -328,7 +328,7 @@ def geospatial_dir():
     Returns:
         pathlib.Path: Le dossier `geospatial/` réellement importé.
     """
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.schema import TEMPLATE_REGISTRY
 
     return template_source(TEMPLATE_REGISTRY[0]).parent
 

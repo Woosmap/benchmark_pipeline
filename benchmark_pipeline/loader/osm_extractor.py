@@ -2,12 +2,12 @@ import json
 import os
 
 import geopandas as gpd
-import osmnx as ox
 import pandas as pd
 import pyarrow as pa
+import quackosm
+from shapely.geometry import box
 
-from benchmark_pipeline.path import CACHE_DIR, GOOGLE_PLACES_FILE, DATA
-from benchmark_pipeline.config import CATEGORIES_EXCLUDED
+from benchmark_pipeline.path import CACHE_DIR, GOOGLE_PLACES_FILE, DATA, OSM_DATA
 
 
 def safe_to_parquet(gdf, path):
@@ -98,12 +98,33 @@ def get_category(row, dic_tags):
             return row[col]
     return "unknown"
 
+def features_from_geofabrik(bbox, tags, city_name):
+    """OSM features of `bbox` with one of `tags`, read from the Geofabrik extract covering it.
+
+    The extract is downloaded into OSM_DATA/<city_name> the first time, then reused.
+
+    Args:
+        bbox (tuple): (west, south, east, north) in WGS84.
+        tags (dict): OSM tags kept, as in osmnx, e.g. {"amenity": ["cafe", "restaurant"]}.
+        city_name (str): Folder of the city in OSM_DATA.
+
+    Returns:
+        GeoDataFrame: in EPSG:4326, one column per OSM tag, indexed like osmnx by (element, id).
+    """
+    features = quackosm.convert_geometry_to_geodataframe(
+        geometry_filter=box(*bbox), tags_filter=tags, osm_extract_source="Geofabrik",
+        keep_all_tags=True, explode_tags=True, working_directory=OSM_DATA / city_name, verbosity_mode="silent")
+    # quackosm ids are "way/123"; osmnx's are ("way", 123), which load_area relies on
+    element, osm_id = zip(*(feature_id.split("/") for feature_id in features.index))
+    features.index = pd.MultiIndex.from_arrays([list(element), [int(i) for i in osm_id]], names=["element", "id"])
+    return features
+
 # ── 1. DONNÉES ───────────────────────────────────────────────────────────────
-def extract_osm_pois(bbox, ecrs, dic_tags, use_cache=True):
+def extract_osm_pois(bbox, ecrs, dic_tags, categories_excluded, city_name, use_cache=True):
     """
     Extrait les POIs OpenStreetMap dans une bounding box pour un ensemble de tags.
 
-    Interroge l'API Overpass via osmnx pour récupérer les features OSM correspondant
+    Lit l'extrait Geofabrik de la zone (`features_from_geofabrik`) pour récupérer les features OSM correspondant
     aux tags fournis. Les géométries polygonales sont réduites à leur centroïde.
     Les coordonnées sont ajoutées en colonnes lat/lon (WGS84) et x/y (Lambert-93).
     Les catégories utilitaires sans intérêt sémantique (bancs, poubelles, etc.)
@@ -112,6 +133,8 @@ def extract_osm_pois(bbox, ecrs, dic_tags, use_cache=True):
     Args:
         bbox (tuple): Bounding box (lon_min, lat_min, lon_max, lat_max) en WGS84.
         dic_tags (dict): Tags OSM à requêter, ex. {"amenity": ["cafe", "restaurant"]}.
+        categories_excluded (list[str]): Categories dropped from the result.
+        city_name (str): Folder of the city in OSM_DATA.
         use_cache (bool): Si True (défaut), charge le cache Parquet s'il existe.
 
     Returns:
@@ -123,12 +146,13 @@ def extract_osm_pois(bbox, ecrs, dic_tags, use_cache=True):
         print("lecture cache")
         pois = gpd.read_parquet(path_pois)
     else:
-        pois = ox.features_from_bbox(
-            bbox,
-            tags=dic_tags
-        )
+        pois = features_from_geofabrik(bbox, dic_tags, city_name)
         path_pois.parent.mkdir(parents=True, exist_ok=True)
         safe_to_parquet(pois, path_pois)
+    # Tags read by the loaders: a city may have no POI carrying one of them (no indoor_seating in Leeuwarden)
+    for column in ("name", "cuisine", "indoor_seating", "outdoor_seating"):
+        if column not in pois:
+            pois[column] = None
     pois["geometry"] = pois.geometry.centroid
     pois["lat"] = pois.geometry.y
     pois["lon"] = pois.geometry.x
@@ -137,7 +161,7 @@ def extract_osm_pois(bbox, ecrs, dic_tags, use_cache=True):
     pois["y"] = pois.geometry.y
     pois["category"] = pois.apply(lambda row: get_category(row, dic_tags), axis=1)
     pois["cuisine"] = pois["cuisine"].str.replace("_", " ", regex=False)
-    pois = pois[~pois['category'].isin(CATEGORIES_EXCLUDED)]
+    pois = pois[~pois['category'].isin(categories_excluded)]
     return pois.reset_index(drop=True)
 
 

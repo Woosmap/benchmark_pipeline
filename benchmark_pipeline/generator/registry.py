@@ -15,5 +15,5 @@ def get_template(name):
     The geospatial modules register themselves with @template when their package is imported:
     the import is done here, so that no caller can forget it and no linter can remove it.
     """
-    importlib.import_module("benchmark_pipeline.generator.template_question.geospatial")
+    importlib.import_module("benchmark_pipeline.generator.geospatial")
     return REGISTRY[name]

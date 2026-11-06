@@ -11,7 +11,7 @@ Ces tests vivaient dans `test_dataset_io.py` jusqu'à la suppression de la couch
 de persistance, dont ils ne dépendaient pas.
 """
 
-from benchmark_pipeline.generator.template_question.schema import TEMPLATES_BY_NAME
+from benchmark_pipeline.generator.schema import TEMPLATES_BY_NAME
 
 #: Modules de `geospatial/` qui ne sont pas des templates de question et n'ont donc
 #: rien à faire dans le registre. `make_question_geo` est un combinateur encore
@@ -30,7 +30,7 @@ def test_registry_matches_the_modules_on_disk():
     """
     import importlib
 
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.schema import TEMPLATE_REGISTRY
     from tests.conftest import template_source
 
     for template in TEMPLATE_REGISTRY:
@@ -69,8 +69,8 @@ def test_the_two_registries_describe_the_same_templates():
     l'inverse ferait échouer la paramétrisation. Ce test est le seul endroit
     qui les confronte.
     """
-    import benchmark_pipeline.generator.template_question.geospatial  # noqa: F401 — peuple REGISTRY
-    from benchmark_pipeline.generator.template_question.registry import REGISTRY
+    import benchmark_pipeline.generator.geospatial  # noqa: F401 — peuple REGISTRY
+    from benchmark_pipeline.generator.registry import REGISTRY
 
     decorated = set(REGISTRY)
     declared = {t.generator for t in TEMPLATES_BY_NAME.values()}
@@ -94,7 +94,7 @@ def test_registry_generators_share_the_nb_q_and_seed_contract():
     import importlib
     import inspect
 
-    from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
+    from benchmark_pipeline.generator.schema import TEMPLATE_REGISTRY
 
     for template in TEMPLATE_REGISTRY:
         module = importlib.import_module(template.module)

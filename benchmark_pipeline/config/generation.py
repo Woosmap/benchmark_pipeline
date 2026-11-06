@@ -11,4 +11,4 @@ NB_HARD_QUESTION = 20
 NB_HARD_UNMATCHED = 1
 
 RATIO_TEST = 0.1                                   # share of the questions kept for the test set
-ROWS_TARGET = ["anchors_mask", "anchors", "ellypse"]                                   # df_question columns copied into each train/test row, e.g. ["ellypse"]
+ROWS_TARGET = [] #["anchors_mask", "anchors", "ellypse"]                                   # df_question columns copied into each train/test row, e.g. ["ellypse"]

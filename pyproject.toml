@@ -19,7 +19,7 @@ dependencies = [
     "gseek",
     "torch>=2.14.0",
     "transformers>=5.18.0",
-
+    "quackosm>=0.20.0",
 ]
 
 [project.optional-dependencies]

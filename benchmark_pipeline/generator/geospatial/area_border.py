@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def pois_near_border(df_osm, area, band):
@@ -25,7 +25,7 @@ def pois_near_border(df_osm, area, band):
     return pois.assign(dist=pois.geometry.distance(border)).sort_values("dist")
 
 @template("make_question_area_border")
-def make_question_area_border(df_osm, df_area, min_size=AREA_BORDER_MIN_SIZE, band=AREA_BORDER_BAND, nb_q=110, seed=42):
+def make_question_area_border(df_osm, df_area, min_size=AREA_BORDER_MIN_SIZE, band=AREA_BORDER_BAND, nb_q=110, seed=SEED):
     """Génère les questions de bordure « X en limite de la zone Z ».
 
     Pour chaque catégorie cible, tire des zones jusqu'à atteindre le quota, dans

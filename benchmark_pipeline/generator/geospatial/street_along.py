@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.registry import template
 
 
 def along_street(df, street_geom, max_dist=DISTANCE_STREET_MAX):
@@ -32,7 +32,7 @@ def along_street(df, street_geom, max_dist=DISTANCE_STREET_MAX):
     return out
 
 @template("make_question_street_along")
-def make_question_street_along(df_osm, df_streets, max_dist=DISTANCE_STREET_MAX, min_length=STREET_ALONG_MIN_LENGTH, nb_q=110, seed=42):
+def make_question_street_along(df_osm, df_streets, max_dist=DISTANCE_STREET_MAX, min_length=STREET_ALONG_MIN_LENGTH, nb_q=110, seed=SEED):
     """Génère les questions de linéaire « X le long de la rue R ».
 
     Contrairement aux générateurs à ancre POI, la stratification porte ici sur la

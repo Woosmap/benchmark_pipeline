@@ -5,8 +5,8 @@ import pandas as pd
 from scipy.spatial import cKDTree
 
 from benchmark_pipeline.config import *
-from benchmark_pipeline.generator.template_question.ratio import allocate
-from benchmark_pipeline.generator.template_question.registry import template
+from benchmark_pipeline.generator.ratio import allocate
+from benchmark_pipeline.generator.registry import template
 
 
 def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=BETWEEN_CORRIDOR):
@@ -53,7 +53,7 @@ def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=BETWEEN_CORRIDOR):
 
 @template("make_question_point_between")
 def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=BETWEEN_CORRIDOR,
-                                nb_q=110, distance_max=DISTANCE_MAX, seed=42,
+                                nb_q=110, distance_max=DISTANCE_MAX, seed=SEED,
                                 nb_ancres_candidates=BETWEEN_NB_CANDIDATE_ANCHORS):
     """Génère les questions d'entre-deux « pois entre A et B ».
 

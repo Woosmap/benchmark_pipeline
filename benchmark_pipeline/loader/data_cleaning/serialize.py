@@ -20,25 +20,28 @@ def serialize_poi(
     include_context: bool = False,
     include_names: bool = False,
     context_col: str = "nearby_stations",
+    category_tags=CATEGORY_TAGS,
+    name_tags=NAME_TAGS,
 ) -> str:
     """Transforme une ligne en une chaîne unique.
- 
+
     include_context : injecte les noms des entités voisines (stations de métro,
         parcs) dans le document. À laisser à False par défaut — voir la note
         en bas de fichier, c'est la décision qui décide de la validité de la
         comparaison spatiale.
+    category_tags, name_tags : OSM tags read for the categories and the name.
     """
     parts: list[str] = []
- 
+
     # --- nom
     if include_names:
-        name = next((c for t in NAME_TAGS if (c := _clean(row.get(t)))), None)
+        name = next((c for t in name_tags if (c := _clean(row.get(t)))), None)
         if name:
             parts.append(name)
- 
+
     # --- catégories : on garde TOUTES celles présentes, pas seulement la
     # première. Un lieu shop=bakery + amenity=cafe doit matcher les deux.
-    cats = [c for t in CATEGORY_TAGS if (c := _clean(row.get(t)))]
+    cats = [c for t in category_tags if (c := _clean(row.get(t)))]
     parts.extend(dict.fromkeys(cats))  # dédoublonne en gardant l'ordre
  
     # --- attributs sémantiques utiles en retrieval
