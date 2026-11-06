@@ -1,25 +1,81 @@
 import geopandas as gpd
-from shapely.ops import linemerge
 import osmnx as ox
-from shapely.ops import unary_union
 import pandas as pd
+from shapely.ops import linemerge, unary_union
 
-from benchmark_pipeline.config import BBOX, AREA_TAGS, STREETS_TAGS, CATEGORIES, FEATURES
-from benchmark_pipeline.loader.osm_extractor import extract_osm_pois, get_category
-from benchmark_pipeline.loader.data_cleaning.cooking_column import classify_cuisine_column
-from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
+from benchmark_pipeline.config import (
+    AREA_TAGS,
+    CATEGORIES,
+    CATEGORIES_EXCLUDED,
+    CATEGORY_TAGS,
+    FEATURES,
+    NAME_TAGS,
+    STREETS_TAGS,
+    DISTANCE_STREET_UNION,
+    MERGE_DISTANCE_STREET,
+    ADMIN_LEVEL,
+    BOW_INCLUDE_ADDRESS,
+    BOW_INCLUDE_CONTEXT,
+    BOW_INCLUDE_NAMES,
+    CUISINE_KEEP_VENUE,
+    CUISINE_PREFER,
+    USE_CACHE,
+)
+from benchmark_pipeline.path import DATA
+from benchmark_pipeline.loader.data_cleaning.cooking_column import (
+    classify_cuisine_column,
+)
 from benchmark_pipeline.loader.data_cleaning.serialize import serialize_poi
+from benchmark_pipeline.loader.osm_extractor import extract_osm_pois, features_from_geofabrik, get_category
+from benchmark_pipeline.path import CACHE_DIR
+from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
+
+ox.settings.cache_folder = CACHE_DIR
+
+import unicodedata
+
+import geopandas as gpd
+from shapely.ops import linemerge
 
 
-def load_streets():
-    streets = ox.features_from_bbox(BBOX, tags=STREETS_TAGS)
-    streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(2154)
+def merge_close_streets(df_street, max_distance=MERGE_DISTANCE_STREET):
+    """Merge pieces of streets with the same normalized name lying less than `max_distance` apart.
+
+    Args:
+        df_street (GeoDataFrame): Streets from `load_streets`, in a metric CRS.
+        max_distance (float): Merge threshold, in CRS units (meters in EPSG:2154).
+
+    Returns:
+        GeoDataFrame: One row per merged street, with the index, `street_id` and name of its first piece.
+    """
+    def normalize(name):
+        name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+        return " ".join(name.lower().split())
+
+    name_norm = df_street["street_name"].map(normalize, na_action="ignore")
+    kept_labels, merged_geoms = [], []
+    for _, group in df_street.groupby(name_norm, sort=False):
+        buffers = group.buffer(max_distance / 2).union_all()
+        clusters = list(buffers.geoms) if buffers.geom_type == "MultiPolygon" else [buffers]
+        for cluster in clusters:
+            members = group[group.intersects(cluster)]
+            geom = members.union_all()
+            kept_labels.append(members.index[0])
+            merged_geoms.append(linemerge(geom) if geom.geom_type == "MultiLineString" else geom)
+
+    merged_geometry = gpd.GeoDataFrame(geometry=merged_geoms, index=kept_labels, crs=df_street.crs).geometry
+    df_merged = df_street.loc[kept_labels].assign(geometry=merged_geometry).sort_index()
+    print(f"{len(df_street) - len(df_merged)} morceaux de rue recollés")
+    return df_merged
+
+def load_streets(bbox, ecrs, streets_tags, street_union_distance, street_merge_distance, city_name):
+    streets = features_from_geofabrik(bbox, streets_tags, city_name)
+    streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(ecrs)
     rows = []
     for name, g in streets.groupby("name")["geometry"]:
         u = unary_union(g.tolist())
         parts = list(u.geoms) if u.geom_type == "MultiLineString" else [u]
-        # regroupe les composantes qui se touchent ou sont à moins de 50 m
-        buf = unary_union([p.buffer(50) for p in parts])
+        buf = unary_union([p.buffer(street_union_distance) for p in parts])
         clusters = list(buf.geoms) if buf.geom_type == "MultiPolygon" else [buf]
         for i, c in enumerate(clusters):
             geom = unary_union([p for p in parts if p.intersects(c)])
@@ -29,40 +85,80 @@ def load_streets():
             else: rows.append({"name": name, "geometry": geom})
 
     df_streets = gpd.GeoDataFrame(rows, crs=streets.crs)
-    #df_streets = df_streets[df_streets["part"]==0]
-    df_streets["id_street"]= df_streets.index
-    df_streets = df_streets[["id_street", "name", "geometry"]]
-    df_streets = df_streets.rename(columns={"index": "id_street", "name": "street_name"})
-    return df_streets
+    df_streets["street_id"]= df_streets.index
+    df_streets = df_streets[["street_id", "name", "geometry"]]
+    df_streets = df_streets.rename(columns={"index": "street_id", "name": "street_name"})
+    return merge_close_streets(df_streets, max_distance=street_merge_distance)
 
-def load_pois():
-    df_osm = extract_osm_pois(BBOX, CATEGORIES, use_cache=False)
-    df_osm = classify_cuisine_column(df_osm)
+def load_pois(bbox, ecrs, categories, categories_excluded, category_tags, name_tags, feature_columns,
+              bow_include_address, bow_include_context, bow_include_names, cuisine_prefer, cuisine_keep_venue,
+              use_cache, city_name):
+    df_osm = extract_osm_pois(bbox, ecrs, categories, categories_excluded, city_name, use_cache=use_cache)
+    df_osm = classify_cuisine_column(df_osm, keep_venue=cuisine_keep_venue, prefer=cuisine_prefer)
     poi_all_index = df_osm.index.tolist()
     df_osm["index"] = poi_all_index
-    df_osm = df_osm[df_osm['geometry'].within(bbox_wgs84_to_lambert(BBOX))]
-    df_osm = df_osm[["index", "name", "category", "cuisine", "geometry", "lat", "lon", "x", "y", "indoor_seating", "outdoor_seating"]]
+    df_osm = df_osm[df_osm['geometry'].within(bbox_wgs84_to_lambert(bbox, ecrs))]
+    df_osm = df_osm[["index", "name", "category", "cuisine", "geometry", "indoor_seating", "outdoor_seating"]]
     df_osm = df_osm.dropna(subset=["name"])
     df_osm = df_osm.rename(columns={"index": "poi_id", "name": "poi_name", "cuisine": "cooking_type"})
-    df_osm["bow_poi"] = [serialize_poi(row, [f.COLUMN for f in FEATURES]) for _, row in df_osm.iterrows()]
+    df_osm["bow_poi"] = [serialize_poi(row, feature_columns, include_address=bow_include_address,
+                                       include_context=bow_include_context, include_names=bow_include_names,
+                                       category_tags=category_tags, name_tags=name_tags)
+                         for _, row in df_osm.iterrows()]
     return df_osm
 
 def add_area_category(area, dic_tags=AREA_TAGS):
-    # à appeler sur le GeoDataFrame brut : les colonnes de tags (`leisure`,
-    # `boundary`) dont la catégorie est déduite sont supprimées ensuite
     area["category"] = area.apply(lambda row: get_category(row, dic_tags), axis=1)
     return area
 
-def load_area():
-    area = ox.features_from_bbox(BBOX, tags=AREA_TAGS)
+def load_area(bbox, ecrs, area_tags, admin_level, city_name):
+    area = features_from_geofabrik(bbox, area_tags, city_name)
     poi_all_index = area.index.tolist()
-    area["index"] = poi_all_index
-    area = area[area.geom_type.isin(["Polygon"])].to_crs(2154)
+    area["area_id"] = [int(i) for _, i in poi_all_index]
+    area = area[area.geom_type.isin(["Polygon"])].to_crs(ecrs)
     area = area[~area.name.isna()]
     lvl = pd.to_numeric(area["admin_level"], errors="coerce")
-    area = area[lvl.isna() | (lvl >= 9)]
-    area = add_area_category(area)
+    area = area[lvl.isna() | (lvl >= admin_level)]
+    area = add_area_category(area, area_tags)
     df_area = area.drop_duplicates(subset="name", keep="first")
-    df_area = df_area[["index", "name", "category", "geometry"]]
+    df_area = df_area[["area_id", "name", "category", "geometry"]]
     df_area = df_area.rename(columns={"name": "area_name"})
     return df_area
+
+def load_tables(
+        bbox,
+        ecrs=None,
+        repo=None,
+        fake_city=False,
+        *,
+        categories=CATEGORIES,
+        categories_excluded=CATEGORIES_EXCLUDED,
+        streets_tags=STREETS_TAGS,
+        area_tags=AREA_TAGS,
+        admin_level=ADMIN_LEVEL,
+        street_union_distance=DISTANCE_STREET_UNION,
+        street_merge_distance=MERGE_DISTANCE_STREET,
+        category_tags=CATEGORY_TAGS,
+        name_tags=NAME_TAGS,
+        feature_columns=tuple(feature.COLUMN for feature in FEATURES),
+        bow_include_address=BOW_INCLUDE_ADDRESS,
+        bow_include_context=BOW_INCLUDE_CONTEXT,
+        bow_include_names=BOW_INCLUDE_NAMES,
+        cuisine_prefer=CUISINE_PREFER,
+        cuisine_keep_venue=CUISINE_KEEP_VENUE,
+        use_cache=USE_CACHE,
+        city_name=None,
+    ):
+    if not fake_city:
+        if ecrs is None or city_name is None:
+            raise ValueError("ecrs and city_name should be given when fake_city=False.")
+        return (load_pois(bbox, ecrs, categories, categories_excluded, category_tags, name_tags, feature_columns,
+                          bow_include_address, bow_include_context, bow_include_names, cuisine_prefer,
+                          cuisine_keep_venue, use_cache, city_name),
+                load_streets(bbox, ecrs, streets_tags, street_union_distance, street_merge_distance, city_name),
+                load_area(bbox, ecrs, area_tags, admin_level, city_name))
+    if repo is None:
+        raise ValueError("repo should be given when fake_city=True.")
+    tables = DATA / repo / "tables"
+    return tuple(gpd.read_parquet(tables / f"{name}.parquet")
+                 for name in ("df_osm", "df_streets", "df_area"))

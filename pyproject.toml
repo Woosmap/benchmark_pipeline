@@ -16,6 +16,10 @@ dependencies = [
     "osmnx>=2.0",        # l'API a change en v2, ne pas descendre en dessous
     "scipy",
     "matplotlib",
+    "gseek",
+    "torch>=2.14.0",
+    "transformers>=5.18.0",
+    "quackosm>=0.20.0",
 ]
 
 [project.optional-dependencies]
@@ -39,8 +43,17 @@ build-backend = "uv_build"
 [tool.uv.build-backend]
 module-root = ""
 
+[tool.uv.sources]
+gseek = { path = "../Gseek", editable = true }
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]   # for `from tests.known_defects import ...`
 addopts = ["--strict-markers", "-ra"]
 markers = ["slow: slow tests (DuckDB per question)"]
+
+[tool.ruff]
+extend-exclude = ["demo.ipynb", "Untitled.ipynb"] 
+
+[tool.ruff.lint.per-file-ignores]
+"**/__init__.py" = ["F401"]

@@ -1,6 +1,7 @@
 from pyproj import Transformer
 from shapely.geometry import box
 
+
 def bbox_wgs84_to_lambert(bbox):
     transformer = Transformer.from_crs("EPSG:4326", "EPSG:2154", always_xy=True)
     min_x, min_y = transformer.transform(bbox[0], bbox[1])
