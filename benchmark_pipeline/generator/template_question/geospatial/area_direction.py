@@ -16,7 +16,7 @@ def segregate_pois(pois, geom, list_direction):
     return {direction: pois[masks[direction]] for direction in list_direction} 
 
 @template("make_question_area_direction")
-def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=20000, nb_q=200, seed=42):
+def make_question_area_direction(df_osm, df_area, list_direction=DIRECTIONS, min_size=AREA_DIRECTION_MIN_SIZE, nb_q=200, seed=42):
     """Génère les questions de position relative dans une zone « X au nord de Z ».
 
     Pour chaque catégorie cible, tire des zones et décline chacune sur les quatre
@@ -36,8 +36,6 @@ def make_question_area_direction(df_osm, df_area, list_direction=None, min_size=
             `function`, `direction`, `results_poi_id`, `results_poi_x`,
             `results_poi_y`, `results_poi_name`, `results_poi_rank`.
     """
-    if list_direction is None:
-        list_direction=["north", "east", "west", "south"]
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     areas = df_area[df_area.geometry.area > min_size]

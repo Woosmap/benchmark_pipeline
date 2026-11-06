@@ -21,7 +21,7 @@ def pois_inside_area(df_osm, area):
 
 
 @template("make_question_area_inside")
-def make_question_area_inside(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
+def make_question_area_inside(df_osm, df_area, min_size=AREA_INSIDE_MIN_SIZE, nb_q=110, seed=42):
     """Génère les questions d'appartenance « X dans la zone Z ».
 
     Pour chaque catégorie cible, tire des zones jusqu'à atteindre le quota, en

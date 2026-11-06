@@ -7,6 +7,7 @@ import pandas as pd
 import pyarrow as pa
 
 from benchmark_pipeline.path import CACHE_DIR, GOOGLE_PLACES_FILE, DATA
+from benchmark_pipeline.config import CATEGORIES_EXCLUDED
 
 
 def safe_to_parquet(gdf, path):
@@ -98,7 +99,7 @@ def get_category(row, dic_tags):
     return "unknown"
 
 # ── 1. DONNÉES ───────────────────────────────────────────────────────────────
-def extract_osm_pois(bbox, dic_tags, use_cache=True):
+def extract_osm_pois(bbox, ecrs, dic_tags, use_cache=True):
     """
     Extrait les POIs OpenStreetMap dans une bounding box pour un ensemble de tags.
 
@@ -131,17 +132,12 @@ def extract_osm_pois(bbox, dic_tags, use_cache=True):
     pois["geometry"] = pois.geometry.centroid
     pois["lat"] = pois.geometry.y
     pois["lon"] = pois.geometry.x
-    pois = pois.to_crs(epsg=2154)
+    pois = pois.to_crs(epsg=ecrs)
     pois["x"] = pois.geometry.x
     pois["y"] = pois.geometry.y
     pois["category"] = pois.apply(lambda row: get_category(row, dic_tags), axis=1)
     pois["cuisine"] = pois["cuisine"].str.replace("_", " ", regex=False)
-    categories_a_exclure = [
-    'bench', 'waste_basket', 'bicycle_parking', 
-    'vending_machine', 'yes', 'parking_space',
-    'ticket_validator', 'recycling'
-    ]
-    pois = pois[~pois['category'].isin(categories_a_exclure)]
+    pois = pois[~pois['category'].isin(CATEGORIES_EXCLUDED)]
     return pois.reset_index(drop=True)
 
 

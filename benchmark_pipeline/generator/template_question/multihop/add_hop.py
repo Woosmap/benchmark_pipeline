@@ -4,7 +4,7 @@ from shapely.geometry import shape
 from shapely.ops import unary_union
 import numpy as np
 
-from benchmark_pipeline.config import FEATURES
+from benchmark_pipeline.config import FEATURES, RATIO_FEATURES, RATIO_WITH_FEATURES
 from benchmark_pipeline.generator.features import *
 from benchmark_pipeline.generator.template_question.composite.generator_qcomposite import make_question_composite, question_geo_semantic
 from benchmark_pipeline.generator.template_question.geospatial.area_border import pois_near_border
@@ -14,7 +14,9 @@ from benchmark_pipeline.generator.template_question.geospatial.point_near import
 from benchmark_pipeline.generator.template_question.geospatial.point_near_cardinal import pack_by_direction
 from benchmark_pipeline.generator.template_question.geospatial.point_near_metric import near_metric_sql
 from benchmark_pipeline.generator.template_question.geospatial.street_along import along_street
-from benchmark_pipeline.config import MANDATORY_FEATURES, MULTIHOP_COLUMNS, LIST_TEMPLATE
+from benchmark_pipeline.config import MANDATORY_FEATURES, MULTIHOP_COLUMNS, MAX_NEW_QUERIES, SEED, LATERAL_AREA_BUFFER
+from benchmark_pipeline.config import LATERAL_NB_QUERY_TEMPLATE, LATERAL_NB_QUERY_FEATURE
+from benchmark_pipeline.config import AREA_BORDER_BAND, DIRECTIONS, DISTANCE_STREET_MAX, METRIC_DISTANCES
 
 
 def find_area(pois):
@@ -51,8 +53,11 @@ def add_lateral_hop(
         df_street,
         df_area,
         df_multihop,
-        max_new_questions=50,
-        seed=0,
+        max_new_queries=MAX_NEW_QUERIES,
+        seed=SEED,
+        area_buffer=LATERAL_AREA_BUFFER,
+        nb_q_by_temp=LATERAL_NB_QUERY_TEMPLATE,
+        nb_q_by_feat=LATERAL_NB_QUERY_FEATURE,
     ):
     """Create questions made of `nb_hop` questions asked together: `id_question` and `nb_hop - 1` lateral questions.
 
@@ -61,7 +66,10 @@ def add_lateral_hop(
     Args:
         id_question: label of the starting question in `df_question`.
         nb_hop (int): number of questions asked in parallel in each new question.
-        max_new_questions (int): number of combinations drawn; only those with at least one answer are kept.
+        max_new_queries (int): number of combinations drawn; only those with at least one answer are kept.
+        area_buffer (float): meters around the answers of `id_question` where lateral anchors are searched.
+        nb_q_by_temp (int): `nb_q` of each template for the lateral questions.
+        nb_q_by_feat (int): attribute constraints drawn per lateral question.
 
     Returns:
         tuple: `index` of the new questions in `df_multihop`, `df_question` with the lateral questions,
@@ -69,12 +77,12 @@ def add_lateral_hop(
     """
     if nb_hop < 2:
         return [], df_question, df_multihop
-    
+
     df_all = pd.concat([df_osm, df_street, df_area], ignore_index=True)
     random_generator = np.random.default_rng(seed)
     question = get_question(id_question, df_question, df_multihop)
     answers = set(question["answers"])
-    area = find_area(df_osm.loc[question["answers"]]).buffer(200)
+    area = find_area(df_osm.loc[question["answers"]]).buffer(area_buffer)
     anchors = object_inside_area(area, df_all)
     df_street = anchors[anchors["street_id"].notna()]
     df_area = anchors[anchors["area_id"].notna()]
@@ -82,9 +90,12 @@ def add_lateral_hop(
     lateral_questions = make_question_composite(
         df_osm.loc[pois],
         df_area, df_street,
-        nb_q_by_temp=10,
-        nb_q_by_feat=10,
+        nb_q_by_temp=nb_q_by_temp,
+        nb_q_by_feat=nb_q_by_feat,
+        ratio_features=RATIO_FEATURES,
+        part_avec_features=RATIO_WITH_FEATURES,
         feature_cols=question["features"],
+        seed=seed,
     )
     shares_answers = lateral_questions["results_features_pois_id"].map(lambda ids: not answers.isdisjoint(ids))
     lateral_questions = lateral_questions[shares_answers]
@@ -93,7 +104,7 @@ def add_lateral_hop(
     df_question = pd.concat([df_question, lateral_questions.rename(columns={"results_features_pois_id": "answers"})])
     new_rows = []
     if len(lateral_questions) >= nb_hop - 1:
-        for _ in range(max_new_questions):
+        for _ in range(max_new_queries):
             chosen_laterals = random_generator.choice(lateral_questions.index, size=nb_hop - 1, replace=False)
             common_answers = set(answers)
             texts = [question["query_texte"]]
@@ -134,15 +145,15 @@ def relations_around(anchor, df_osm):
     geometry = anchor.geometry
     if geometry.geom_type in ("Polygon", "MultiPolygon"):
         yield "pois_inside_area", "inside", pois_inside_area(df_osm, geometry).poi_id
-        yield "pois_near_border", "at the border of", pois_near_border(df_osm, geometry, 200).poi_id
+        yield "pois_near_border", "at the border of", pois_near_border(df_osm, geometry, AREA_BORDER_BAND).poi_id
         inside = df_osm[df_osm.geometry.within(geometry)]
-        for direction, sector in segregate_pois(inside, geometry, ["north", "east", "west", "south"]).items():
+        for direction, sector in segregate_pois(inside, geometry, DIRECTIONS).items():
             yield "segregate_pois", f"at the {direction} of", sector.poi_id
     elif "LineString" in geometry.geom_type:
-        yield "along_street", "following", along_street(df_osm, geometry, 50).poi_id
+        yield "along_street", "following", along_street(df_osm, geometry, DISTANCE_STREET_MAX).poi_id
     else:
         yield "near_sql", "near", near_sql(df_osm, geometry.x, geometry.y).poi_id
-        for distance, batch in near_metric_sql(df_osm, geometry.x, geometry.y, [100, 300, 500, 1000]).groupby("distance"):
+        for distance, batch in near_metric_sql(df_osm, geometry.x, geometry.y, METRIC_DISTANCES).groupby("distance"):
             yield "near_metric_sql", f"at less than {distance} meters from", batch.poi_id
         for direction, sector in pack_by_direction(df_osm, geometry.x, geometry.y).groupby("direction"):
             yield "pack_by_direction", f"to the {direction} of", sector.poi_id
@@ -154,8 +165,9 @@ def add_backward_hop(
         id_question, 
         df_osm, 
         df_question, 
-        df_multihop, 
-        nb_q_by_feat=10
+        df_multihop,
+        nb_q_by_feat,
+        seed,
     ):
     question = get_question(id_question, df_question, df_multihop)
     answers = defaultdict(set)
@@ -165,7 +177,7 @@ def add_backward_hop(
     df_geo = pd.DataFrame([{"function": function, "query": f"pois {relation} {question['query_texte']}",
                             "results_poi_id": sorted(ids)} for (function, relation), ids in answers.items()])
     
-    df_q2 = question_geo_semantic(df_geo, df_osm, FEATURES, {1: 1, 2: 1, 3: 1}, nb_q_by_feat)
+    df_q2 = question_geo_semantic(df_geo, df_osm, FEATURES, RATIO_FEATURES, nb_q_by_feat, seed=seed)
     start = next_label(df_question, df_multihop)
     new_q_index = list(range(start, start + len(df_q2)))
     df_q2 = df_q2.set_axis(new_q_index)

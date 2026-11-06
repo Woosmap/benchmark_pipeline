@@ -5,6 +5,8 @@ import pandas as pd
 from mlx_lm import batch_generate, load
 from mlx_lm.sample_utils import make_sampler
 
+from benchmark_pipeline.config import SEED
+
 _load = lru_cache(maxsize=1)(load)
 
 CONTEXT = "Paraphrase this spatial search query. Keep place names, place category and spatial relation unchanged. Answer with the paraphrase only."
@@ -12,7 +14,8 @@ CONTEXT = "Paraphrase this spatial search query. Keep place names, place categor
 MODELE_DEFAUT = "Qwen/Qwen2-1.5B-Instruct-MLX"
 
 TAILLE_LOT = 128
-
+NB_PARAPHRASED_BY_QUERY = 10
+TEMPERATURE = 0.5
 
 def _prompt(tok, query: str) -> list[int]:
     return tok.apply_chat_template(
@@ -22,10 +25,10 @@ def _prompt(tok, query: str) -> list[int]:
 
 def paraphrases_par_lot(
         queries,
-        nb_generated: int = 100,
+        nb_generated: int = NB_PARAPHRASED_BY_QUERY,
         model_name: str = MODELE_DEFAUT,
-        seed: int = 0,
-        temperature: float = 0.5,
+        seed: int = SEED,
+        temperature: float = TEMPERATURE,
         taille_lot: int = TAILLE_LOT,
     ) -> list[list[str]]:
     """Paraphrase plusieurs énoncés d'un coup.

@@ -5,12 +5,14 @@ from shapely.ops import linemerge, unary_union
 
 from benchmark_pipeline.config import (
     AREA_TAGS,
-    BBOX,
     CATEGORIES,
     FEATURES,
     STREETS_TAGS,
-    ECRS,
+    DISTANCE_STREET_UNION,
+    MERGE_DISTANCE_STREET,
+    ADMIN_LEVEL,
 )
+from benchmark_pipeline.path import DATA
 from benchmark_pipeline.loader.data_cleaning.cooking_column import (
     classify_cuisine_column,
 )
@@ -27,7 +29,7 @@ import geopandas as gpd
 from shapely.ops import linemerge
 
 
-def merge_close_streets(df_street, max_distance=500):
+def merge_close_streets(df_street, max_distance=MERGE_DISTANCE_STREET):
     """Merge pieces of streets with the same normalized name lying less than `max_distance` apart.
 
     Args:
@@ -57,14 +59,14 @@ def merge_close_streets(df_street, max_distance=500):
     print(f"{len(df_street) - len(df_merged)} morceaux de rue recollés")
     return df_merged
 
-def load_streets():
-    streets = ox.features_from_bbox(BBOX, tags=STREETS_TAGS)
-    streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(ECRS)
+def load_streets(bbox, ecrs):
+    streets = ox.features_from_bbox(bbox, tags=STREETS_TAGS)
+    streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(ecrs)
     rows = []
     for name, g in streets.groupby("name")["geometry"]:
         u = unary_union(g.tolist())
         parts = list(u.geoms) if u.geom_type == "MultiLineString" else [u]
-        buf = unary_union([p.buffer(50) for p in parts])
+        buf = unary_union([p.buffer(DISTANCE_STREET_UNION) for p in parts])
         clusters = list(buf.geoms) if buf.geom_type == "MultiPolygon" else [buf]
         for i, c in enumerate(clusters):
             geom = unary_union([p for p in parts if p.intersects(c)])
@@ -79,13 +81,13 @@ def load_streets():
     df_streets = df_streets.rename(columns={"index": "street_id", "name": "street_name"})
     return merge_close_streets(df_streets)
 
-def load_pois(use_cache=False):
-    df_osm = extract_osm_pois(BBOX, CATEGORIES, use_cache=use_cache)
+def load_pois(bbox, ecrs, use_cache=False):
+    df_osm = extract_osm_pois(bbox, ecrs, CATEGORIES, use_cache=use_cache)
     df_osm = classify_cuisine_column(df_osm)
     poi_all_index = df_osm.index.tolist()
     df_osm["index"] = poi_all_index
-    df_osm = df_osm[df_osm['geometry'].within(bbox_wgs84_to_lambert(BBOX))]
-    df_osm = df_osm[["index", "name", "category", "cuisine", "geometry", "indoor_seating", "outdoor_seating"]] #"lat", "lon", "x", "y"
+    df_osm = df_osm[df_osm['geometry'].within(bbox_wgs84_to_lambert(bbox))]
+    df_osm = df_osm[["index", "name", "category", "cuisine", "geometry", "indoor_seating", "outdoor_seating"]]
     df_osm = df_osm.dropna(subset=["name"])
     df_osm = df_osm.rename(columns={"index": "poi_id", "name": "poi_name", "cuisine": "cooking_type"})
     df_osm["bow_poi"] = [serialize_poi(row, [f.COLUMN for f in FEATURES]) for _, row in df_osm.iterrows()]
@@ -95,16 +97,27 @@ def add_area_category(area, dic_tags=AREA_TAGS):
     area["category"] = area.apply(lambda row: get_category(row, dic_tags), axis=1)
     return area
 
-def load_area():
-    area = ox.features_from_bbox(BBOX, tags=AREA_TAGS)
+def load_area(bbox, ecrs):
+    area = ox.features_from_bbox(bbox, tags=AREA_TAGS)
     poi_all_index = area.index.tolist()
     area["area_id"] = [int(i) for _, i in poi_all_index]
-    area = area[area.geom_type.isin(["Polygon"])].to_crs(ECRS)
+    area = area[area.geom_type.isin(["Polygon"])].to_crs(ecrs)
     area = area[~area.name.isna()]
     lvl = pd.to_numeric(area["admin_level"], errors="coerce")
-    area = area[lvl.isna() | (lvl >= 9)]
+    area = area[lvl.isna() | (lvl >= ADMIN_LEVEL)]
     area = add_area_category(area)
     df_area = area.drop_duplicates(subset="name", keep="first")
     df_area = df_area[["area_id", "name", "category", "geometry"]]
     df_area = df_area.rename(columns={"name": "area_name"})
     return df_area
+
+def load_tables(bbox, ecrs=None, repo=None, fake_city=False):
+    if not fake_city:
+        if ecrs is None:
+            raise ValueError("ecrs should be given when fake_city=False.")
+        return load_pois(bbox, ecrs), load_streets(bbox, ecrs), load_area(bbox, ecrs)
+    if repo is None:
+        raise ValueError("repo should be given when fake_city=True.")
+    tables = DATA / repo / "tables"
+    return tuple(gpd.read_parquet(tables / f"{name}.parquet")
+                 for name in ("df_osm", "df_streets", "df_area"))

@@ -8,11 +8,11 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def side_of_street(street_geom, pt):
+def side_of_street(street_geom, pt, step=OPPOSITE_SIDE_TANGENT_STEP):
     """Détermine de quel côté d'une rue se trouve un point.
 
     Estime la tangente à la rue au droit du point, par deux points d'appui pris à
-    ±5 m de son projeté, puis prend le signe du produit vectoriel 2D entre cette
+    ±`step` m de son projeté, puis prend le signe du produit vectoriel 2D entre cette
     tangente et le vecteur allant du premier point d'appui vers le point. Le signe
     n'a de valeur que relative : deux points de signes opposés sont de part et
     d'autre de la rue.
@@ -20,6 +20,7 @@ def side_of_street(street_geom, pt):
     Args:
         street_geom (LineString | MultiLineString): Géométrie de la rue.
         pt (Point): Point à situer.
+        step (float): Distance of the support points to the projection, in meters.
 
     Returns:
         float: +1.0 ou -1.0 selon le côté.
@@ -30,14 +31,15 @@ def side_of_street(street_geom, pt):
     """
     s = street_geom.geoms[0] if street_geom.geom_type == "MultiLineString" else street_geom
     t = s.project(pt)
-    p0 = s.interpolate(max(t - 5.0, 0))
-    p1 = s.interpolate(min(t + 5.0, s.length))
+    p0 = s.interpolate(max(t - step, 0))
+    p1 = s.interpolate(min(t + step, s.length))
     cross = ((p1.x - p0.x) * (pt.y - p0.y)
              - (p1.y - p0.y) * (pt.x - p0.x))
     return 1.0 if cross >= 0 else -1.0
 
-def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
-                  max_along=80.0, max_cross=40.0):
+def opposite_side(df, street_geom, poi_y_geom, cat, k=OPPOSITE_SIDE_NB_RESULTS,
+                  max_along=OPPOSITE_SIDE_MAX_ALONG, max_cross=OPPOSITE_SIDE_MAX_CROSS,
+                  step=OPPOSITE_SIDE_TANGENT_STEP):
     """Retourne les POIs d'une catégorie situés en face d'un POI de référence, de l'autre côté d'une rue.
 
     Un candidat est retenu s'il est du côté opposé au POI de référence, à moins de
@@ -53,6 +55,7 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
         k (int): Nombre maximal de résultats retournés.
         max_along (float): Décalage longitudinal maximal admis, en mètres.
         max_cross (float): Éloignement maximal à la rue, en mètres.
+        step (float): Passed to `side_of_street`.
 
     Returns:
         DataFrame: Colonnes `poi_id`, `poi_name`, `cross`, `along`, `score` et
@@ -64,7 +67,7 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
         `GeoSeries.project`/`shapely.line_locate_point`.
     """
     s = street_geom.geoms[0] if street_geom.geom_type == "MultiLineString" else street_geom
-    side_y = side_of_street(s, poi_y_geom)
+    side_y = side_of_street(s, poi_y_geom, step)
     t_y = s.project(poi_y_geom)
     sub = df[df["category"] == cat]
     proches = np.sort(sub.sindex.query(s, predicate="dwithin", distance=max_cross))
@@ -73,8 +76,8 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
         return pd.DataFrame(columns=["poi_id", "poi_name", "cross", "along", "score", "rank"])
     pts = sub.geometry.values
     along = shapely.line_locate_point(s, pts)
-    p0 = shapely.line_interpolate_point(s, np.maximum(along - 5.0, 0))
-    p1 = shapely.line_interpolate_point(s, np.minimum(along + 5.0, s.length))
+    p0 = shapely.line_interpolate_point(s, np.maximum(along - step, 0))
+    p1 = shapely.line_interpolate_point(s, np.minimum(along + step, s.length))
     x0, y0 = shapely.get_x(p0), shapely.get_y(p0)
     x1, y1 = shapely.get_x(p1), shapely.get_y(p1)
     px, py = shapely.get_x(pts), shapely.get_y(pts)
@@ -93,11 +96,12 @@ def opposite_side(df, street_geom, poi_y_geom, cat, k=100,
     return out
 
 @template("make_question_street_opposite_side")
-def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, max_tries=200):
+def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, max_tries=MAX_TRIES,
+                                       reference_radius=OPPOSITE_SIDE_REFERENCE_RADIUS):
     """Génère les questions de vis-à-vis « X en face de Y, de l'autre côté de la rue R ».
 
     Tire une rue à géométrie simple, puis un POI de référence parmi ceux situés à
-    moins de 40 m de cette rue.
+    moins de `reference_radius` m de cette rue.
 
     Args:
         df_osm (GeoDataFrame): POIs servant de références et de cibles.
@@ -105,6 +109,8 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
             sont retenues.
         nb_q (int): Nombre total de questions visé, stratifié par catégorie cible.
         seed (int): Graine du générateur aléatoire.
+        max_tries (int): Streets drawn per category before giving up.
+        reference_radius (float): Maximal distance of the reference POI to the street, in meters.
 
     Returns:
         DataFrame: Une ligne par question. Colonnes `query`, `category_query`,
@@ -124,7 +130,7 @@ def make_question_street_opposite_side(df_osm, df_streets, nb_q=110, seed=42, ma
         while n < n_queries_per_stratum and tries < max_tries:
             tries += 1
             street = lines.loc[rng.choice(lines.index)]
-            proches = np.sort(df_osm.sindex.query(street.geometry, predicate="dwithin", distance=40))
+            proches = np.sort(df_osm.sindex.query(street.geometry, predicate="dwithin", distance=reference_radius))
             near = df_osm.iloc[proches]
             if near.empty:
                 continue

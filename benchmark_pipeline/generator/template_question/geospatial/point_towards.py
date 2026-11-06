@@ -8,7 +8,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def towards_b_sql(df, ax, ay, bx, by, half_width=70.0, distance_max=DISTANCE_MAX):
+def towards_b_sql(df, ax, ay, bx, by, half_width=TOWARDS_HALF_WIDTH, distance_max=DISTANCE_MAX):
     """Retourne les POIs d'une catégorie situés dans la direction d'un point B depuis un point A.
 
     Généralise `pack_by_direction` en remplaçant la direction cardinale par
@@ -53,10 +53,11 @@ def towards_b_sql(df, ax, ay, bx, by, half_width=70.0, distance_max=DISTANCE_MAX
     })
 
 @template("make_question_point_towards")
-def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, seed=42):
+def make_question_point_towards(df_osm, ratio=None, half_width=TOWARDS_HALF_WIDTH, nb_q=110, seed=42,
+                                distance_max=DISTANCE_MAX):
     """Génère les questions directionnelles « X près de A en allant vers B ».
 
-    Pour chaque ancre A, tire un second POI B parmi ceux situés à moins de 1 000 m,
+    Pour chaque ancre A, tire un second POI B parmi ceux situés à moins de `distance_max` m,
     via un `cKDTree` construit sur les coordonnées projetées.
 
     Args:
@@ -64,6 +65,7 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
         half_width (float): Demi-ouverture du cône, en degrés.
         nb_q (int): Nombre de questions visé, stratifié par catégorie interrogée.
         seed (int): Graine du générateur aléatoire.
+        distance_max (float): Radius in which B is drawn around A, in meters.
 
     Returns:
         DataFrame: Une ligne par question. Mêmes colonnes que
@@ -84,7 +86,7 @@ def make_question_point_towards(df_osm, ratio=None, half_width=70.0, nb_q=110, s
         if rank_in_pool >= len(anchor_pools[cat_anc]):
             continue
         anchor = anchor_pools[cat_anc].iloc[rank_in_pool]
-        neighbour_positions = [position for position in tree.query_ball_point([anchor.geometry.x, anchor.geometry.y], 1000)
+        neighbour_positions = [position for position in tree.query_ball_point([anchor.geometry.x, anchor.geometry.y], distance_max)
                                if pid[position] != anchor.poi_id]
         if not neighbour_positions:
             continue

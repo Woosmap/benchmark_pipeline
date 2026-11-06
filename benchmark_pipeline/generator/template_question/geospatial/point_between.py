@@ -9,7 +9,7 @@ from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=200.0):
+def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=BETWEEN_CORRIDOR):
     """Retourne les POIs d'une catégorie situés dans le corridor reliant deux points.
 
     Projette chaque POI dans le repère du segment A→B : `along` est l'abscisse
@@ -52,9 +52,9 @@ def between_ab_sql(df, ax, ay, bx, by, cat, corridor_m=200.0):
     })
 
 @template("make_question_point_between")
-def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=200.0,
-                                nb_q=110, distance_max=1000.0, seed=42,
-                                nb_ancres_candidates=300):
+def make_question_point_between(df_osm, ratio_cat_anchor=None, corridor_m=BETWEEN_CORRIDOR,
+                                nb_q=110, distance_max=DISTANCE_MAX, seed=42,
+                                nb_ancres_candidates=BETWEEN_NB_CANDIDATE_ANCHORS):
     """Génère les questions d'entre-deux « pois entre A et B ».
 
     Les deux ancres sont des POIs quelconques, B étant tiré dans le voisinage de A.

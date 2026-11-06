@@ -29,7 +29,7 @@ def outside_area(area, category, pois, cat_col="category"):
     return sel.sort_values("dist").reset_index(drop=True)
 
 @template("make_question_area_outside")
-def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42):
+def make_question_area_outside(df_osm, df_area, min_size=AREA_OUTSIDE_MIN_SIZE, nb_q=110, seed=42, max_tries=MAX_TRIES):
     """Génère les questions d'exclusion « X hors de la zone Z ».
 
     Même structure que `make_question_insidearea`, avec le complémentaire de la
@@ -41,6 +41,7 @@ def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42
         min_size (float): Surface minimale d'une zone retenue, en m².
         nb_q (int): Nombre total de questions visé, stratifié par catégorie cible.
         seed (int): Graine du générateur aléatoire.
+        max_tries (int): Areas drawn per category before giving up.
 
     Returns:
         DataFrame: Une ligne par question, mêmes colonnes que
@@ -57,7 +58,7 @@ def make_question_area_outside(df_osm, df_area, min_size=1000, nb_q=110, seed=42
     for cat_q in list_cat:
         nq = 0
         i = 0
-        while nq != n_queries_per_stratum and i<200:
+        while nq != n_queries_per_stratum and i<max_tries:
             i+=1
             area = areas.loc[rng.choice(areas.index)]
             df_poi_in_area = df_osm[~df_osm.geometry.within(area.geometry)]

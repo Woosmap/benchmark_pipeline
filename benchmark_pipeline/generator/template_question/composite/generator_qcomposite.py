@@ -7,6 +7,7 @@ from benchmark_pipeline.config import FEATURES, MANDATORY_FEATURES
 from benchmark_pipeline.generator.template_question.ratio import allocate
 from benchmark_pipeline.generator.template_question.registry import get_template
 from benchmark_pipeline.config import LIST_TEMPLATE
+from benchmark_pipeline.config import SEED
 
 
 MOTS_GENERIQUES = {"poi", "pois"}
@@ -110,7 +111,7 @@ def question_geo_semantic(df_question, df_osm, feature_cols, ratio_features,
     return pd.DataFrame(lignes)
 
 
-def _appeler_template(nom, nb_q, sources):
+def _appeler_template(nom, nb_q, sources, seed):
     """Appelle un générateur du REGISTRY avec les seules sources qu'il accepte.
 
     Args:
@@ -118,25 +119,26 @@ def _appeler_template(nom, nb_q, sources):
         nb_q (int): Nombre de questions demandé au générateur.
         sources (dict): `df_osm`, `df_area` et `df_streets` disponibles ; chaque
             template n'en déclare qu'une partie dans sa signature.
+        seed (int): Graine du générateur.
 
     Returns:
         DataFrame: Les questions spatiales produites par ce template.
     """
     generateur = get_template(nom)
     attendues = inspect.signature(generateur).parameters
-    return generateur(nb_q=nb_q, **{k: v for k, v in sources.items() if k in attendues})
+    return generateur(nb_q=nb_q, seed=seed, **{k: v for k, v in sources.items() if k in attendues})
 
 
 def make_question_composite(
         df_osm,
         df_area,
         df_streets,
-        nb_q_by_temp=100,
-        nb_q_by_feat=10,
-        ratio_features=None,
-        part_avec_features=1.0,
+        nb_q_by_temp,
+        nb_q_by_feat,
+        ratio_features,
+        part_avec_features,
         feature_cols=FEATURES,
-        seed=42,
+        seed=SEED,
         is_paraphrase=False,
     ):
     """Produit le jeu complet de questions composites.
@@ -154,17 +156,16 @@ def make_question_composite(
             combinés ; équirépartition sur 1, 2 et 3 si None.
         part_avec_features (float): Part des questions à enrichir, dans [0, 1].
         feature_cols (list[str] | list[Feature]): Colonnes d'attributs éligibles.
-        seed (int): Graine du tirage sémantique.
+        seed (int): Graine des générateurs spatiaux et du tirage sémantique.
 
     Returns:
         DataFrame: Les questions composites. `query` garde l'énoncé spatial seul,
             `query_geo_semantic` l'énoncé balisé `colonne=valeur`, et
             `query_texte` l'énoncé en langue naturelle.
     """
-    ratio_features = ratio_features or {1: 1, 2: 1, 3: 1}
     sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
     df_geo_q = pd.concat(
-        [_appeler_template(nom, nb_q_by_temp, sources) for nom in LIST_TEMPLATE],
+        [_appeler_template(nom, nb_q_by_temp, sources, seed) for nom in LIST_TEMPLATE],
         ignore_index=True)
 
     if is_paraphrase:

@@ -6,6 +6,7 @@ from typing import Any, TypedDict
 from numpy.random import Generator
 from numpy.typing import NDArray
 from pandas import DataFrame, Series
+from benchmark_pipeline.config import NB_HARD_QUESTION, NB_HARD_UNMATCHED, RATIO_TEST, ROWS_TARGET
 
 PoiId = int | tuple
 
@@ -151,10 +152,11 @@ def format_composit_samples(
         df_question: DataFrame, 
         df_osm: DataFrame, 
         rng: Generator,
-        rows_target: list[str],
-        ratio_test: float = 0.1,
-        nb_hard: int = 20,
-        nb_unmatches: int = 1,
+        rows_target: list[str] = ROWS_TARGET,
+        ratio_test: float = RATIO_TEST,
+        ratio_feature = None,
+        nb_hard: int = NB_HARD_QUESTION,
+        nb_unmatches: int = NB_HARD_UNMATCHED,
     ) -> tuple[list[Batch], NDArray]:
     """
     fonction qui porend le dataset question but et qui renvoit un dataframe au bon format de clonne 

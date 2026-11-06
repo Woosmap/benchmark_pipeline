@@ -13,8 +13,8 @@ def disambiguate_names(
 
     Args:
         df_osm (DataFrame): POIs, with `poi_name`. Left unchanged.
-        df_street (DataFrame): Streets, with `street_name`. Modified in place: "Rue " is
-            prepended when the name equals a POI or area name and does not contain "Rue".
+        df_street (DataFrame): Streets, with `street_name`. Modified in place: "street " is
+            prepended when the name equals a POI or area name and does not contain "street".
         df_area (DataFrame): Areas, with `area_name` and `category`. Modified in place:
             the category is prepended when the name equals a POI name.
 
@@ -25,8 +25,8 @@ def disambiguate_names(
         matches = df_street[df_street["street_name"] == poi_row["poi_name"]]
         for street_label, street_row in matches.iterrows():
             street_name = street_row["street_name"]
-            if "Rue" not in street_name:
-                df_street.at[street_label, "street_name"] = f"Rue {street_name}"
+            if "street" not in street_name:
+                df_street.at[street_label, "street_name"] = f"street {street_name}"
 
         area_similarity = df_area[df_area["area_name"]==poi_row["poi_name"]]
         for area_num_row, area_row in area_similarity.iterrows():
@@ -38,8 +38,8 @@ def disambiguate_names(
             matches = df_street[df_street["street_name"] == area_row["area_name"]]
             for street_label, street_row in matches.iterrows():
                 street_name = street_row["street_name"]
-                if "Rue" not in street_name:
-                    df_street.at[street_label, "street_name"] = f"Rue {street_name}"
+                if "street" not in street_name:
+                    df_street.at[street_label, "street_name"] = f"street {street_name}"
     return df_osm, df_street, df_area
 
 def name_filtering_poi(df_osm, key):

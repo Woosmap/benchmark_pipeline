@@ -49,7 +49,7 @@ def pack_by_direction(df, x, y, distance_max=DISTANCE_MAX):
 
 
 @template("make_question_point_near_cardinal")
-def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, nb_q=110, seed=42):
+def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=DIRECTIONS, nb_q=110, seed=42):
     """Génère les questions de direction cardinale « X au nord de Y ».
 
     Args:
@@ -63,8 +63,6 @@ def make_question_point_near_cardinal(df_osm, ratio=None, list_direction=None, n
         DataFrame: Une ligne par (ancre, direction). Mêmes colonnes que
             `make_question_nearsql`, plus `direction`.
     """
-    if list_direction is None:
-        list_direction = ["north", "east", "west", "south"]
     dic_benchmark = defaultdict(list)
     rng = np.random.default_rng(seed)
     list_cat = df_osm["category"].unique()

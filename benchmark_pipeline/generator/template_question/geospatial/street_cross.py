@@ -7,7 +7,7 @@ from benchmark_pipeline.config import *
 from benchmark_pipeline.generator.template_question.registry import template
 
 
-def touching_streets(df_streets, street, tol=1.0):
+def touching_streets(df_streets, street, tol=STREET_CROSS_TOLERANCE):
     """Rues qui croisent vraiment une rue donnée.
 
     Args:
