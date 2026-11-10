@@ -4,7 +4,7 @@ from benchmark_pipeline.generator.features import *
 FEATURES = [Category(), CookingType(), OutDoorSeating(), InDoorSeating()]
 MANDATORY_FEATURES = "category"
 
-MULTIHOP_COLUMNS = ["query_texte", "features", "dic_query", "values", "answers", "template"]
+MULTIHOP_COLUMNS = ["query_texte", "features", "dic_query", "values", "answers", "template", "anchors_type", "anchors_id"]
 
 # Columns of df_question used by make_rows to build the train/test rows
 QUESTION_COLUMN = "query_texte"                       # question text published ("query_geo_semantic": tagged column=value version)

@@ -59,6 +59,8 @@ def merge_close_streets(df_street, max_distance=MERGE_DISTANCE_STREET):
         clusters = list(buffers.geoms) if buffers.geom_type == "MultiPolygon" else [buffers]
         for cluster in clusters:
             members = group[group.intersects(cluster)]
+            if members.empty:   # sliver left by the buffer of finely cut streets: no street in it
+                continue
             geom = members.union_all()
             kept_labels.append(members.index[0])
             merged_geoms.append(linemerge(geom) if geom.geom_type == "MultiLineString" else geom)

@@ -31,7 +31,8 @@ nlp = ["sentence-transformers"]
 dev = [
     "pytest",
     "ruff",
-    "ipykernel"
+    "ipykernel",
+    "ipywidgets>=8.1.9",
 ]
 
 [build-system]

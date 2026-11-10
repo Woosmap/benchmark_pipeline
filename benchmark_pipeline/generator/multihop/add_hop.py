@@ -42,6 +42,20 @@ def get_question(id_question, df_question, df_multihop):
     question["answers"] = list(question["answers"])
     return question
 
+def anchors_graph(question):
+    """`anchors_type` and `anchors_id` of `question` as {level: [anchors of each question of the node]}, like dic_query.
+
+    A single-hop question has the flat lists of its generator: they become its only node.
+    """
+    if isinstance(question["anchors_type"], dict):
+        return question["anchors_type"], question["anchors_id"]
+    return {1: [list(question["anchors_type"])], 2: None}, {1: [list(question["anchors_id"])], 2: None}
+
+def node_anchors(question):
+    """`anchors_type` and `anchors_id` of the last node of `question` (level 1), as flat lists."""
+    types, ids = anchors_graph(question)
+    return [t for anchors in types[1] for t in anchors], [i for anchors in ids[1] for i in anchors]
+
 def add_lateral_hop(
         id_question,
         nb_hop,
@@ -102,11 +116,19 @@ def add_lateral_hop(
         list_template=list_template,
         template_params=template_params,
     )
-    shares_answers = lateral_questions["results_features_pois_id"].map(lambda ids: not answers.isdisjoint(ids))
-    lateral_questions = lateral_questions[shares_answers]
+    if lateral_questions.empty:   # no lateral question around an isolated answer
+        return [], df_question, df_multihop
+    # every lateral question goes to df_question, under labels after the existing ones
     start = next_label(df_question, df_multihop)
     lateral_questions = lateral_questions.set_axis(list(range(start, start + len(lateral_questions))))
     df_question = pd.concat([df_question, lateral_questions.rename(columns={"results_features_pois_id": "answers"})])
+
+    shares_answers = lateral_questions["results_features_pois_id"].map(
+            lambda ids: 0 < len(answers.intersection(ids)) < len(answers)
+        )
+    lateral_questions = lateral_questions[shares_answers]
+    types_graph, ids_graph = anchors_graph(question)
+    own_types, own_ids = node_anchors(question)
     new_rows = []
     if len(lateral_questions) >= nb_hop - 1:
         for _ in range(max_new_queries):
@@ -118,12 +140,16 @@ def add_lateral_hop(
                 common_answers &= set(lateral["results_features_pois_id"])
                 texts.append(lateral["query"][len("pois "):])
             if common_answers:
+                # level 1 of the graph is [question, *laterals], as in dic_query: one list of anchors per question
+                laterals = lateral_questions.loc[sorted(chosen_laterals)]
                 new_rows.append({"index_origin": id_question,
                                  "index_lateral": sorted(chosen_laterals),
                                  "query_texte":"[" + " and ".join(texts) + "]",
                                  "features": question["features"],
                                  "values": question["values"],
-                                 "answers": sorted(common_answers)})
+                                 "answers": sorted(common_answers),
+                                 "anchors_type": {**types_graph, 1: [own_types] + list(laterals["anchors_type"])},
+                                 "anchors_id": {**ids_graph, 1: [own_ids] + list(laterals["anchors_id"])}})
     if not new_rows:
         return [], df_question, df_multihop
 
@@ -166,6 +192,35 @@ def relations_around(anchor, df_osm, directions, metric_distances, border_band, 
 def shift_keys(d, head):
     return {1: head, **{k + 1: v for k, v in d.items()}}
 
+def drop_reachable_from_anchor(df_q2, question, df_osm, *relation_params):
+    """Drop the rows of `df_q2` whose answers are those of the same question asked around the base anchor.
+
+    Each row is asked again with the same relation and attributes, around the anchors of `question` instead
+    of its answers; when this ground truth equals the answers of the row, the middle anchor adds nothing.
+    Only POI anchors give the relations of a backward hop (near, at less than d meters, to the north of):
+    `relations_around` gives other relations around streets and areas, which never match.
+
+    relation_params: directions, metric_distances, border_band, street_max_dist, distance_max.
+    """
+    # POIs around the anchors of the last node of `question`, for each relation: the same for every row
+    answers = defaultdict(set)
+    for kind, anchor_id in zip(*node_anchors(question)):
+        if kind != "point":   # a street or an area id is not a poi_id
+            continue
+        anchor = df_osm.loc[anchor_id]
+        for function, relation, ids in relations_around(anchor, df_osm, *relation_params):
+            answers[function, relation] |= set(ids) - {anchor.poi_id}
+
+    to_drop = []
+    for index, row in df_q2.iterrows():
+        relation = row["query"].removeprefix("pois ").removesuffix(" " + question["query_texte"])
+        pois = df_osm.loc[sorted(answers[row["function"], relation])]
+        has_features = (pois[list(row["features"])] == list(row["values"])).all(axis=1)
+        if set(pois.poi_id[has_features]) == set(row["results_features_pois_id"]):
+            to_drop.append(index)
+    return df_q2.drop(index=to_drop)
+
+
 def add_backward_hop(
         id_question,
         df_osm,
@@ -189,11 +244,16 @@ def add_backward_hop(
         for function, relation, ids in relations_around(anchor, df_osm, directions, metric_distances,
                                                         border_band, street_max_dist, distance_max):
             answers[function, relation] |= set(ids) - {anchor.poi_id}
+
     df_geo = pd.DataFrame([{"function": function, "query": f"pois {relation} {question['query_texte']}",
                             "results_poi_id": sorted(ids)} for (function, relation), ids in answers.items()])
 
     df_q2 = question_geo_semantic(df_geo, df_osm, feature_cols, ratio_features, nb_q_by_feat,
                                   part_with_features, seed=seed)
+    df_q2 = drop_reachable_from_anchor(df_q2, question, df_osm, directions, metric_distances,
+                                       border_band, street_max_dist, distance_max)
+    if df_q2.empty:   # no POI around the answers, or none with attribute values: no column either
+        return [], df_multihop
     start = next_label(df_question, df_multihop)
     new_q_index = list(range(start, start + len(df_q2)))
     df_q2 = df_q2.set_axis(new_q_index)
@@ -201,6 +261,10 @@ def add_backward_hop(
     new_template = shift_keys(question["template"] or {1: 1, 2: 0}, 1)
     base_dic = shift_keys(question["dic_query"] or {}, 0)
     dic_queries = [{**base_dic, 1: k} for k in range(len(df_q2))]
+    # the node of "pois near [question]" has the answers of the question as anchors; the graph below shifts
+    types_graph, ids_graph = anchors_graph(question)
+    anchors_type = shift_keys(types_graph, [["point"] * len(question["answers"])])
+    anchors_id = shift_keys(ids_graph, [list(question["answers"])])
 
     df_new_qm = pd.DataFrame({
         "index": df_q2.index,
@@ -211,6 +275,8 @@ def add_backward_hop(
         "values": df_q2["values"].to_numpy(),
         "template": [dict(new_template) for _ in range(len(df_q2.index))],
         "dic_query": dic_queries,
+        "anchors_type": [dict(anchors_type) for _ in range(len(df_q2.index))],
+        "anchors_id": [dict(anchors_id) for _ in range(len(df_q2.index))],
         })
     df_multihop = pd.concat([df_multihop, df_new_qm], ignore_index=True).rename_axis("index")
     return new_q_index, df_multihop
