@@ -81,8 +81,10 @@ def question_geo_semantic(df_question, df_osm, feature_cols, ratio_features,
         df_osm (DataFrame): Corpus, avec `poi_id` et les colonnes d'attributs.
         feature_cols (list[str] | list[Feature]): Colonnes d'attributs éligibles.
         ratio_features (dict[int, float]): Poids par nombre d'attributs combinés.
-        nb_q_by_feat (int): Contraintes tirées par question enrichie.
-        part_avec_features (float): Part des questions à enrichir, dans [0, 1].
+        nb_q_by_feat (int): Contraintes tirées par question.
+        part_avec_features (float): Part des questions enrichies selon
+            `ratio_features`, dans [0, 1] ; les autres n'ont que l'attribut
+            obligatoire (`MANDATORY_FEATURES`).
         seed (int): Graine du tirage.
 
     Returns:
@@ -99,10 +101,8 @@ def question_geo_semantic(df_question, df_osm, feature_cols, ratio_features,
     lignes = []
     for (_, question), enrichie in zip(df_question.iterrows(), a_enrichir):
         reponse = attributs.reindex(question["results_poi_id"])
-        if not enrichie:
-            lignes.append(_ligne_composite(question, (), (), list(reponse.index), feature_cols))
-            continue
-        for nb_attributs, nb_tires in budget.items():
+        # a question left out of the enrichment only gets the mandatory attribute, with the whole budget
+        for nb_attributs, nb_tires in (budget if enrichie else {1: nb_q_by_feat}).items():
             candidats = _groupes_disponibles(reponse, nb_attributs)
             if not candidats:
                 continue

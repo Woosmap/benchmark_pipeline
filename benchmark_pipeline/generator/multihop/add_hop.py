@@ -9,9 +9,11 @@ from benchmark_pipeline.generator.composite.generator_qcomposite import make_que
 from benchmark_pipeline.generator.geospatial.area_border import pois_near_border
 from benchmark_pipeline.generator.geospatial.area_direction import segregate_pois
 from benchmark_pipeline.generator.geospatial.area_inside import pois_inside_area
+from benchmark_pipeline.generator.geospatial.point_between import between_ab_sql
 from benchmark_pipeline.generator.geospatial.point_near import near_sql
 from benchmark_pipeline.generator.geospatial.point_near_cardinal import pack_by_direction
 from benchmark_pipeline.generator.geospatial.point_near_metric import near_metric_sql
+from benchmark_pipeline.generator.geospatial.point_towards import towards_b_sql
 from benchmark_pipeline.generator.geospatial.street_along import along_street
 from benchmark_pipeline.config import MANDATORY_FEATURES, MULTIHOP_COLUMNS
 
@@ -189,32 +191,66 @@ def relations_around(anchor, df_osm, directions, metric_distances, border_band, 
         for direction, sector in pack_by_direction(df_osm, geometry.x, geometry.y, distance_max=distance_max).groupby("direction"):
             yield "pack_by_direction", f"to the {direction} of", sector.poi_id
 
+def two_anchor_relations(anchor, second, df_osm, corridor_m, half_width, distance_max):
+    """Relations between the POI `anchor` and a second POI: (function, relation with {} for the anchor, poi_ids)."""
+    a, b = anchor.geometry, second.geometry
+    yield ("between_ab_sql", f"between {{}} and {second.poi_name}",
+           between_ab_sql(df_osm, a.x, a.y, b.x, b.y, cat=None, corridor_m=corridor_m).poi_id)
+    yield ("towards_b_sql", f"near {{}} towards {second.poi_name}",
+           towards_b_sql(df_osm, a.x, a.y, b.x, b.y, half_width=half_width, distance_max=distance_max).poi_id)
+
+def relations_by_key(anchors, second, df_osm, directions, metric_distances, border_band, street_max_dist,
+                     distance_max, corridor_m, half_width):
+    """POIs of each relation of a backward hop around the POIs `anchors`: {(function, relation): poi_ids}.
+
+    `relation` has {} where the anchor goes: "near {}", "between {} and Y". `second` is the POI Y of between
+    and towards, None to leave them out. Each anchor, and Y, is left out of its own results.
+    """
+    found = defaultdict(set)
+    for _, anchor in anchors.iterrows():
+        for function, relation, ids in relations_around(anchor, df_osm, directions, metric_distances,
+                                                        border_band, street_max_dist, distance_max):
+            found[function, relation + " {}"] |= set(ids) - {anchor.poi_id}
+        if second is not None:
+            for function, relation, ids in two_anchor_relations(anchor, second, df_osm, corridor_m, half_width,
+                                                                distance_max):
+                found[function, relation] |= set(ids) - {anchor.poi_id, second.poi_id}
+    return found
+
+def node_pois(question, df_osm):
+    """The POI anchors of the last node of `question`; streets and areas are left out, their ids are not poi_ids."""
+    return df_osm.loc[[anchor_id for kind, anchor_id in zip(*node_anchors(question)) if kind == "point"]]
+
+def draw_second_anchor(answers, excluded, df_osm, distance_max, seed):
+    """Y of between and towards: a named POI less than `distance_max` from one of the POIs `answers`, outside
+    `excluded`, drawn as in make_question_point_between and make_question_point_towards; None if there is none."""
+    close = df_osm.geometry.distance(unary_union(list(answers.geometry))) <= distance_max
+    named = df_osm["poi_name"].notna() & (df_osm["poi_name"] != "")
+    candidates = df_osm[close & named & ~df_osm["poi_id"].isin(excluded)]
+    if candidates.empty:
+        return None
+    return candidates.iloc[np.random.default_rng(seed).integers(len(candidates))]
+
 def shift_keys(d, head):
     return {1: head, **{k + 1: v for k, v in d.items()}}
 
-def drop_reachable_from_anchor(df_q2, question, df_osm, *relation_params):
+def drop_reachable_from_anchor(df_q2, question, second, df_osm, *relation_params):
     """Drop the rows of `df_q2` whose answers are those of the same question asked around the base anchor.
 
-    Each row is asked again with the same relation and attributes, around the anchors of `question` instead
-    of its answers; when this ground truth equals the answers of the row, the middle anchor adds nothing.
-    Only POI anchors give the relations of a backward hop (near, at less than d meters, to the north of):
-    `relations_around` gives other relations around streets and areas, which never match.
+    Each row is asked again with the same relation, the same Y and the same attributes, around the anchors
+    of `question` instead of its answers; when this ground truth equals the answers of the row, the middle
+    anchor adds nothing. Only POI anchors give the relations of a backward hop (near, at less than d meters,
+    to the north of, between, towards).
 
-    relation_params: directions, metric_distances, border_band, street_max_dist, distance_max.
+    relation_params: directions, metric_distances, border_band, street_max_dist, distance_max, corridor_m,
+        half_width, as in `relations_by_key`.
     """
     # POIs around the anchors of the last node of `question`, for each relation: the same for every row
-    answers = defaultdict(set)
-    for kind, anchor_id in zip(*node_anchors(question)):
-        if kind != "point":   # a street or an area id is not a poi_id
-            continue
-        anchor = df_osm.loc[anchor_id]
-        for function, relation, ids in relations_around(anchor, df_osm, *relation_params):
-            answers[function, relation] |= set(ids) - {anchor.poi_id}
+    answers = relations_by_key(node_pois(question, df_osm), second, df_osm, *relation_params)
 
     to_drop = []
     for index, row in df_q2.iterrows():
-        relation = row["query"].removeprefix("pois ").removesuffix(" " + question["query_texte"])
-        pois = df_osm.loc[sorted(answers[row["function"], relation])]
+        pois = df_osm.loc[sorted(answers[row["function"], row["relation"]])]
         has_features = (pois[list(row["features"])] == list(row["values"])).all(axis=1)
         if set(pois.poi_id[has_features]) == set(row["results_features_pois_id"]):
             to_drop.append(index)
@@ -237,22 +273,25 @@ def add_backward_hop(
         border_band,
         street_max_dist,
         distance_max,
+        corridor_m,
+        half_width,
     ):
     question = get_question(id_question, df_question, df_multihop)
-    answers = defaultdict(set)
-    for _, anchor in df_osm.loc[question["answers"]].iterrows():
-        for function, relation, ids in relations_around(anchor, df_osm, directions, metric_distances,
-                                                        border_band, street_max_dist, distance_max):
-            answers[function, relation] |= set(ids) - {anchor.poi_id}
+    answer_pois = df_osm.loc[question["answers"]]
+    excluded = set(question["answers"]) | set(node_pois(question, df_osm)["poi_id"])
+    second = draw_second_anchor(answer_pois, excluded, df_osm, distance_max, seed)
+    relation_params = (directions, metric_distances, border_band, street_max_dist, distance_max, corridor_m, half_width)
+    answers = relations_by_key(answer_pois, second, df_osm, *relation_params)
 
-    df_geo = pd.DataFrame([{"function": function, "query": f"pois {relation} {question['query_texte']}",
+    # the question goes where {} is: "pois near [Q]", "pois between [Q] and Y"
+    df_geo = pd.DataFrame([{"function": function, "relation": relation,
+                            "query": "pois " + relation.replace("{}", question["query_texte"], 1),
                             "results_poi_id": sorted(ids)} for (function, relation), ids in answers.items()])
 
     df_q2 = question_geo_semantic(df_geo, df_osm, feature_cols, ratio_features, nb_q_by_feat,
                                   part_with_features, seed=seed)
-    df_q2 = drop_reachable_from_anchor(df_q2, question, df_osm, directions, metric_distances,
-                                       border_band, street_max_dist, distance_max)
-    if df_q2.empty:   # no POI around the answers, or none with attribute values: no column either
+    df_q2 = drop_reachable_from_anchor(df_q2, question, second, df_osm, *relation_params)
+    if df_q2.empty:
         return [], df_multihop
     start = next_label(df_question, df_multihop)
     new_q_index = list(range(start, start + len(df_q2)))
@@ -261,7 +300,6 @@ def add_backward_hop(
     new_template = shift_keys(question["template"] or {1: 1, 2: 0}, 1)
     base_dic = shift_keys(question["dic_query"] or {}, 0)
     dic_queries = [{**base_dic, 1: k} for k in range(len(df_q2))]
-    # the node of "pois near [question]" has the answers of the question as anchors; the graph below shifts
     types_graph, ids_graph = anchors_graph(question)
     anchors_type = shift_keys(types_graph, [["point"] * len(question["answers"])])
     anchors_id = shift_keys(ids_graph, [list(question["answers"])])

@@ -38,8 +38,9 @@ def make_text_multihop(df_multihop, df_question, feature_cols):
                 nodes = [{**below[0], "sentence": below[0]["sentence"] + " and " + relations}] + below[1:]
             else:
                 head = attributes_text(row["features"], row["values"], feature_cols)
-                relation = row["query_texte"][len(head) + 1:-len(origin_text) - 1]
-                nodes = [{"sentence": f"{head} {relation} {below[0]['short']}",
+                # the question below may sit inside the relation: "between [Q] and Y", "near [Q] towards Y"
+                before, _, after = row["query_texte"][len(head) + 1:].partition(origin_text)
+                nodes = [{"sentence": f"{head} {before}{below[0]['short']}{after}",
                           "short": attributes_text(row["features"][:1], row["values"][:1], feature_cols)}] + below
         nodes_cache[id_query] = nodes
         return nodes

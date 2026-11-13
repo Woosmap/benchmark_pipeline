@@ -3,9 +3,10 @@ import pandas as pd
 
 from benchmark_pipeline.generator.multihop.add_hop import add_backward_hop, add_lateral_hop
 from benchmark_pipeline.config import (
-    AREA_BORDER_BAND, DIRECTIONS, DISTANCE_MAX, DISTANCE_STREET_MAX, FEATURES, LATERAL_AREA_BUFFER,
+    AREA_BORDER_BAND, BETWEEN_CORRIDOR, DIRECTIONS, DISTANCE_MAX, DISTANCE_STREET_MAX, FEATURES, LATERAL_AREA_BUFFER,
     LATERAL_NB_QUERY_FEATURE, LATERAL_NB_QUERY_TEMPLATE, LIST_TEMPLATE, MAX_NEW_QUERIES, MAX_QUERY_NODES,
     METRIC_DISTANCES, MULTIHOP_COLUMNS, NB_QUERY_FEATURE, RATIO_FEATURES, RATIO_WITH_FEATURES, SEED, TEMPLATE_PARAMS,
+    TOWARDS_HALF_WIDTH,
 )
 from benchmark_pipeline.utils.dicts_to_lists import dicts_to_lists
 from benchmark_pipeline.generator.multihop.make_multihop_text import make_text_multihop
@@ -45,6 +46,8 @@ def make_multihop_questions(
         border_band,
         street_max_dist,
         distance_max,
+        corridor_m,
+        half_width,
     ):
     """Build multihop questions following `question_template`, with `add_backward_hop` and `add_lateral_hop`.
 
@@ -89,7 +92,8 @@ def make_multihop_questions(
                     feature_cols=feature_cols, ratio_features=ratio_features,
                     part_with_features=part_with_features, directions=directions,
                     metric_distances=metric_distances, border_band=border_band,
-                    street_max_dist=street_max_dist, distance_max=distance_max)
+                    street_max_dist=street_max_dist, distance_max=distance_max,
+                    corridor_m=corridor_m, half_width=half_width)
                 next_index += new_index
             backward_index = keep_questions(next_index, max_questions_per_node, random_generator)
 
@@ -121,6 +125,8 @@ def make_multihop_dataset(
     border_band: float = AREA_BORDER_BAND,
     street_max_dist: float = DISTANCE_STREET_MAX,
     distance_max: float = DISTANCE_MAX,
+    corridor_m: float = BETWEEN_CORRIDOR,
+    half_width: float = TOWARDS_HALF_WIDTH,
 ) -> None:
     """Build the multi-hop question dataset and save it to parquet.
 
@@ -149,6 +155,7 @@ def make_multihop_dataset(
         ratio_features, part_with_features, feature_cols: Attribute constraints, as in `make_question_composite`.
         list_template, template_params: Spatial generators of the lateral questions and their arguments.
         directions, metric_distances, border_band, street_max_dist, distance_max: Relations of the backward hops.
+        corridor_m, half_width: Corridor of between and cone of towards, around the answers and a second POI.
 
     Returns:
         None. Writes two files to ``DATA / repo / "multihop"``:
@@ -166,6 +173,7 @@ def make_multihop_dataset(
             feature_cols=feature_cols, list_template=list_template, template_params=template_params,
             directions=directions, metric_distances=metric_distances, border_band=border_band,
             street_max_dist=street_max_dist, distance_max=distance_max,
+            corridor_m=corridor_m, half_width=half_width,
         )
     df_multihop = make_text_multihop(df_multihop, df_question, feature_cols)
 

@@ -213,14 +213,14 @@ def test_toutes_les_contraintes_sont_couvertes(df_question, df_osm_attributs):
     assert sum(len(groupe) > 1 for groupe in groupes) >= 4
 
 
-def test_sans_contrainte_la_reponse_spatiale_est_intacte(df_question, df_osm_attributs):
-    """Une question non enrichie recopie sa réponse spatiale, ordre compris."""
+def test_sans_enrichissement_seule_la_categorie_contraint(df_question, df_osm_attributs):
+    """Une question non enrichie n'a que l'attribut obligatoire : une ligne par catégorie, ordre spatial compris."""
     df_composite = generer(df_question, df_osm_attributs, part_avec_features=0.0)
 
-    assert len(df_composite) == 1
-    ligne = df_composite.iloc[0]
-    assert list(ligne["results_features_pois_id"]) == ORDRE_SPATIAL
-    assert ligne["features"] == () and ligne["values"] == ()
+    assert sorted(ligne["values"] for _, ligne in df_composite.iterrows()) == [("cafe",), ("restaurant",)]
+    for _, ligne in df_composite.iterrows():
+        assert ligne["features"] == ("category",)
+        assert list(ligne["results_features_pois_id"]) == reponse_attendue(ligne["features"], ligne["values"])
 
 
 # --------------------------------------------------------------------------- #
