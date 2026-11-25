@@ -9,14 +9,14 @@ Trois familles de générateurs :
 
 | Famille | Où | Ce qu'elle produit |
 |---|---|---|
-| **géospatiale** | `benchmark_pipeline/generator/template_question/geospatial/` | 12 templates : proximité (`point_near`, `point_near_metric`), direction (`point_near_cardinal`, `point_towards`, `point_between`), zone (`area_inside`, `area_outside`, `area_border`, `area_direction`), rue (`street_along`, `street_cross`, `street_opposite_side`) |
-| **sémantique** | `benchmark_pipeline/generator/template_question/semantic/` | questions sur les attributs d'un POI (cuisine, terrasse, horaires) |
-| **composite** | `benchmark_pipeline/generator/template_question/composite/` | `make_question_geo`, qui croise les deux |
+| **géospatiale** | `benchmark_pipeline/generator/geospatial/` | 12 templates : proximité (`point_near`, `point_near_metric`), direction (`point_near_cardinal`, `point_towards`, `point_between`), zone (`area_inside`, `area_outside`, `area_border`, `area_direction`), rue (`street_along`, `street_cross`, `street_opposite_side`) |
+| **sémantique** | `benchmark_pipeline/generator/semantic/` | questions sur les attributs d'un POI (cuisine, terrasse, horaires) |
+| **composite** | `benchmark_pipeline/generator/composite/` | `make_question_geo`, qui croise les deux |
 
 Chaque template géospatial suit le même contrat :
 `make_question_*(df, …, nb_q, seed) -> DataFrame`, et est déclaré dans
 `TEMPLATE_REGISTRY`
-(`benchmark_pipeline/generator/template_question/schema.py`), qui sert à la fois
+(`benchmark_pipeline/generator/schema.py`), qui sert à la fois
 à l'enregistrement en lot et à la paramétrisation des tests.
 
 ---
@@ -56,7 +56,7 @@ groupe `dev`, sinon reste sur VS Code.
 ```bash
 python -c "
 from benchmark_pipeline.config import BBOX
-from benchmark_pipeline.generator.template_question.schema import TEMPLATE_REGISTRY
+from benchmark_pipeline.generator.schema import TEMPLATE_REGISTRY
 print(len(TEMPLATE_REGISTRY), 'templates,  bbox', BBOX)
 "
 # -> 12 templates,  bbox (2.24, 48.8, 2.41, 48.9)
@@ -132,7 +132,7 @@ Marais, utile pour itérer vite.
 
 ```python
 from benchmark_pipeline.loader.osm_loaders import load_pois, load_streets, load_area
-from benchmark_pipeline.generator.template_question.geospatial.point_near import (
+from benchmark_pipeline.generator.geospatial.point_near import (
     make_question_point_near,
 )
 from benchmark_pipeline.utils.dataset_io import save_benchmark
@@ -154,7 +154,7 @@ save_benchmark(bench, "point_near.parquet", df_osm=df_osm)
   `data/benchmarks/geospatial/` avec un fichier de métadonnées (commit git,
   versions des bibliothèques, schéma). `data/` est ignoré par git.
 - `make_question_geo`
-  (`benchmark_pipeline/generator/template_question/composite/generator_qcomposite.py`)
+  (`benchmark_pipeline/generator/composite/generator_qcomposite.py`)
   combine questions géospatiales et sémantiques ; c'est le point d'entrée du
   benchmark complet, et il attend `df_osm`, `df_area` et `df_streets`.
 - Le nettoyage des types de cuisine peut appeler `sentence-transformers`
@@ -177,11 +177,10 @@ benchmark_pipeline/
     data_cleaning/
   generator/
     features.py
-    template_question/
-      schema.py                  # TEMPLATE_REGISTRY : contrat de sortie des 12 templates
-      registry.py                # registre par décorateur @template
-      geospatial/                # les 12 générateurs
-      semantic/  composite/  multihop/
+    schema.py                    # TEMPLATE_REGISTRY : contrat de sortie des 12 templates
+    registry.py                  # registre par décorateur @template
+    geospatial/                  # les 12 générateurs
+    semantic/  composite/  multihop/
   utils/dataset_io.py            # save_benchmark / load_benchmark + métadonnées
   dataviz_tools/                 # plot_question et fonds de carte
 tests/

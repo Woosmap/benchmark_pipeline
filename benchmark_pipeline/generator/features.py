@@ -1,6 +1,6 @@
-from abc import ABC, abstractmethod
-from itertools import combinations
 import math
+from abc import ABC, abstractmethod
+
 
 class Feature(ABC):
     """
@@ -24,7 +24,6 @@ class Feature(ABC):
             La valeur de la feature (str, bool, float, list, etc.), ou None si
             l'information est absente ou non applicable.
         """
-        pass
 
     @abstractmethod
     def to_text(self, value) -> str:
@@ -38,8 +37,6 @@ class Feature(ABC):
             str | list[str] | None: Fragment(s) de phrase prêt(s) à être intégré(s)
                 dans une question, ou None si la valeur ne produit pas de texte utile.
         """
-        pass
-
 
 class OutDoorSeating(Feature):
     """Feature indiquant la présence ou l'absence de places assises en terrasse."""
@@ -62,6 +59,18 @@ class OutDoorSeating(Feature):
             return "with outdoor seating"
         if value=="no":
             return "without outdoor seating"
+        if value=="terrace":
+            return "with terrace"
+        if value=="sidewalk":
+            return "on sidewalk"
+        if value=="pedestrian_zone":
+            return "in pedestrian zone"
+        if value=="terrace":
+            return "with terrace"
+        if value=="parklet":
+                    return "with parklet"
+        if value=="veranda":
+                    return "with veranda"
         return None
 
 
@@ -114,7 +123,7 @@ class CookingType(Feature):
     def to_text(self, value):
         """Retourne "cooking_type <type>" si le type est renseigné, sinon None."""
         if value is not None and value!="nan":
-            return f"cooking_type {value}"
+            return f"{value} food"
 
 
 class Category(Feature):
@@ -134,4 +143,4 @@ class Category(Feature):
     def to_text(self, value):
         """Retourne "category <type>" si la cat est renseignée, sinon None."""
         if value is not None and value!="nan":
-            return f"category {value}"
+            return f"{value}"
