@@ -130,6 +130,31 @@ def _appeler_template(nom, nb_q, sources, seed, params):
     return generateur(nb_q=nb_q, seed=seed, **params, **{k: v for k, v in sources.items() if k in attendues})
 
 
+def make_question_spatial(df_osm, df_area, df_streets, nb_q_by_temp, seed=SEED, list_template=LIST_TEMPLATE,
+                          template_params=TEMPLATE_PARAMS):
+    """Les questions spatiales seules, `nb_q_by_temp` par générateur de `list_template`.
+
+    Returns:
+        DataFrame: Une ligne par question spatiale, avec `query` et `results_poi_id`.
+    """
+    sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
+    return pd.concat(
+        [_appeler_template(nom, nb_q_by_temp, sources, seed, template_params.get(nom, {})) for nom in list_template],
+        ignore_index=True)
+
+
+def make_question_features(df_geo_q, df_osm, feature_cols, ratio_features, nb_q_by_feat, part_avec_features,
+                           seed=SEED, is_paraphrase=False):
+    """Croise les questions spatiales `df_geo_q` avec des contraintes d'attributs (`question_geo_semantic`),
+    puis les paraphrase si `is_paraphrase`."""
+    data = question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features, nb_q_by_feat,
+                                 part_avec_features, seed)
+    if is_paraphrase:
+        from benchmark_pipeline.paraphrase import make_paraphrase   # charge mlx : seulement si on paraphrase
+        return make_paraphrase(data)
+    return data
+
+
 def make_question_composite(
         df_osm,
         df_area,
@@ -146,8 +171,8 @@ def make_question_composite(
     ):
     """Produit le jeu complet de questions composites.
 
-    Enchaîne les deux étapes : générer les questions spatiales, puis croiser
-    chacune avec les contraintes d'attributs que porte sa propre réponse.
+    Enchaîne les deux étapes : générer les questions spatiales (`make_question_spatial`), puis croiser
+    chacune avec les contraintes d'attributs que porte sa propre réponse (`make_question_features`).
 
     Args:
         df_osm (GeoDataFrame): Corpus de POIs, avec les colonnes d'attributs.
@@ -168,14 +193,6 @@ def make_question_composite(
             `query_geo_semantic` l'énoncé balisé `colonne=valeur`, et
             `query_texte` l'énoncé en langue naturelle.
     """
-    sources = {"df_osm": df_osm, "df_area": df_area, "df_streets": df_streets}
-    df_geo_q = pd.concat(
-        [_appeler_template(nom, nb_q_by_temp, sources, seed, template_params.get(nom, {})) for nom in list_template],
-        ignore_index=True)
-
-    if is_paraphrase:
-        data = question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features,
-                                 nb_q_by_feat, part_avec_features, seed)
-        return make_paraphrase(data)
-    else: return question_geo_semantic(df_geo_q, df_osm, feature_cols, ratio_features,
-                                 nb_q_by_feat, part_avec_features, seed)
+    df_geo_q = make_question_spatial(df_osm, df_area, df_streets, nb_q_by_temp, seed, list_template, template_params)
+    return make_question_features(df_geo_q, df_osm, feature_cols, ratio_features, nb_q_by_feat,
+                                  part_avec_features, seed, is_paraphrase)

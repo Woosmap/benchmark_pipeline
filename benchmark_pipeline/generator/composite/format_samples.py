@@ -3,12 +3,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, TypedDict
 
+import numpy as np
 from numpy.random import Generator
 from numpy.typing import NDArray
-from pandas import DataFrame, Series
+from pandas import DataFrame, Series, factorize
 from benchmark_pipeline.config import (
-    ANSWERS_COLUMN, NB_HARD_QUESTION, NB_HARD_UNMATCHED, QUESTION_COLUMN, RATIO_TEST, ROWS_TARGET,
-    SPATIAL_ANSWERS_COLUMN,
+    ANSWERS_COLUMN, NB_HARD_QUESTION, NB_HARD_UNMATCHED, QUESTION_COLUMN, ROWS_TARGET, SPATIAL_ANSWERS_COLUMN,
 )
 
 PoiId = int | tuple
@@ -71,24 +71,30 @@ def tirer(rng: Generator, candidats: Sequence[PoiId], k: int) -> list[PoiId]:
     positions = rng.choice(len(candidats), size=min(k, len(candidats)), replace=False)
     return [candidats[i] for i in positions]
 
-def split_train_test(
-        n_questions: int, 
+def split_spatial_questions(
+        df_geo: DataFrame,
         ratio_test: float,
         rng: Generator
-    ) -> tuple[NDArray, NDArray]:
-    """Mélange les positions 0..n-1, puis coupe en test et train.
+    ) -> tuple[DataFrame, DataFrame]:
+    """Coupe les questions spatiales en train et test, avant l'ajout des attributs.
+
+    Les questions de même `query` (même énoncé spatial) vont du même côté : les énoncés sont mélangés,
+    puis mis en test jusqu'à atteindre `ratio_test` des questions.
 
     Args:
-        n_questions: nombre de questions.
+        df_geo: questions spatiales, colonne `query`.
         ratio_test: part réservée au test.
         rng: générateur numpy.
 
     Returns:
-        (train, test), des positions.
+        (train, test), deux DataFrames réindexés à partir de 0.
     """
-    positions = rng.permutation(n_questions)
-    n_test = int(n_questions * ratio_test)
-    return positions[n_test:], positions[:n_test]
+    groupes, _ = factorize(df_geo["query"])
+    ordre = rng.permutation(groupes.max() + 1)
+    n_test = int(len(df_geo) * ratio_test)
+    nb_groupes_test = np.searchsorted(np.cumsum(np.bincount(groupes)[ordre]), n_test) + 1 if n_test else 0
+    est_test = np.isin(groupes, ordre[:nb_groupes_test])
+    return df_geo[~est_test].reset_index(drop=True), df_geo[est_test].reset_index(drop=True)
 
 def make_rows(
         df_question: DataFrame,
@@ -152,27 +158,24 @@ def make_rows(
 
 
 def format_composit_samples(
-        df_question: DataFrame, 
-        df_osm: DataFrame, 
+        df_question: DataFrame,
+        df_osm: DataFrame,
         rng: Generator,
+        is_test: bool = False,
         rows_target: list[str] = ROWS_TARGET,
-        ratio_test: float = RATIO_TEST,
         nb_hard: int = NB_HARD_QUESTION,
         nb_unmatches: int = NB_HARD_UNMATCHED,
         colonne_question: str = QUESTION_COLUMN,
         colonne_pois: str = ANSWERS_COLUMN,
         colonne_pois_spatiaux: str = SPATIAL_ANSWERS_COLUMN,
-    ) -> tuple[list[Batch], NDArray]:
-    """
-    fonction qui porend le dataset question but et qui renvoit un dataframe au bon format de clonne
-    avec les spécifications de la conf passée en arguments
+    ) -> DataFrame:
+    """Met en forme les questions d'une branche (train ou test), dans un ordre tiré au hasard.
+
+    `index` de chaque ligne est la position de la question dans `df_question` ; les lignes du test
+    n'ont pas de négatifs difficiles.
 
     colonne_question, colonne_pois, colonne_pois_spatiaux : passed to `make_rows`.
     """
-    train, test = split_train_test(len(df_question), ratio_test, rng)
-    columns = {"colonne_question": colonne_question, "colonne_pois": colonne_pois,
-               "colonne_pois_spatiaux": colonne_pois_spatiaux}
-    train_set = make_rows(df_question, df_osm, train, rng, nb_hard, nb_unmatches, rows_target=rows_target, **columns)
-    test_set = make_rows(df_question, df_osm, test, rng, nb_hard, nb_unmatches, rows_target=rows_target, is_test=True,
-                         **columns)
-    return train_set, test_set
+    return make_rows(df_question, df_osm, rng.permutation(len(df_question)), rng, nb_hard, nb_unmatches,
+                     is_test=is_test, rows_target=rows_target, colonne_question=colonne_question,
+                     colonne_pois=colonne_pois, colonne_pois_spatiaux=colonne_pois_spatiaux)

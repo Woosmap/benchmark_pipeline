@@ -1,5 +1,4 @@
 import geopandas as gpd
-import osmnx as ox
 import pandas as pd
 from shapely.ops import linemerge, unary_union
 
@@ -27,10 +26,7 @@ from benchmark_pipeline.loader.data_cleaning.cooking_column import (
 )
 from benchmark_pipeline.loader.data_cleaning.serialize import serialize_poi
 from benchmark_pipeline.loader.osm_extractor import extract_osm_pois, features_from_geofabrik, get_category
-from benchmark_pipeline.path import CACHE_DIR
 from benchmark_pipeline.utils.bbox_reshap import bbox_wgs84_to_lambert
-
-ox.settings.cache_folder = CACHE_DIR
 
 import unicodedata
 
@@ -49,7 +45,8 @@ def merge_close_streets(df_street, max_distance=MERGE_DISTANCE_STREET):
         GeoDataFrame: One row per merged street, with the index, `street_id` and name of its first piece.
     """
     def normalize(name):
-        name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode()
+        # drops only the accents: an ASCII encoding would turn every non-Latin name (東扇島) into ""
+        name = "".join(c for c in unicodedata.normalize("NFKD", name) if not unicodedata.combining(c))
         return " ".join(name.lower().split())
 
     name_norm = df_street["street_name"].map(normalize, na_action="ignore")
@@ -70,8 +67,8 @@ def merge_close_streets(df_street, max_distance=MERGE_DISTANCE_STREET):
     print(f"{len(df_street) - len(df_merged)} morceaux de rue recollés")
     return df_merged
 
-def load_streets(bbox, ecrs, streets_tags, street_union_distance, street_merge_distance, city_name):
-    streets = features_from_geofabrik(bbox, streets_tags, city_name)
+def load_streets(bbox, ecrs, streets_tags, street_union_distance, street_merge_distance, use_cache, city_name):
+    streets = features_from_geofabrik(bbox, streets_tags, city_name, use_cache=use_cache)
     streets = streets[streets.geom_type.isin(["LineString", "MultiLineString"])].to_crs(ecrs)
     rows = []
     for name, g in streets.groupby("name")["geometry"]:
@@ -113,8 +110,8 @@ def add_area_category(area, dic_tags=AREA_TAGS):
     area["category"] = area.apply(lambda row: get_category(row, dic_tags), axis=1)
     return area
 
-def load_area(bbox, ecrs, area_tags, admin_level, city_name):
-    area = features_from_geofabrik(bbox, area_tags, city_name)
+def load_area(bbox, ecrs, area_tags, admin_level, use_cache, city_name):
+    area = features_from_geofabrik(bbox, area_tags, city_name, use_cache=use_cache)
     poi_all_index = area.index.tolist()
     area["area_id"] = [int(i) for _, i in poi_all_index]
     area = area[area.geom_type.isin(["Polygon"])].to_crs(ecrs)
@@ -157,10 +154,11 @@ def load_tables(
         return (load_pois(bbox, ecrs, categories, categories_excluded, category_tags, name_tags, feature_columns,
                           bow_include_address, bow_include_context, bow_include_names, cuisine_prefer,
                           cuisine_keep_venue, use_cache, city_name),
-                load_streets(bbox, ecrs, streets_tags, street_union_distance, street_merge_distance, city_name),
-                load_area(bbox, ecrs, area_tags, admin_level, city_name))
+                load_streets(bbox, ecrs, streets_tags, street_union_distance, street_merge_distance, use_cache,
+                             city_name),
+                load_area(bbox, ecrs, area_tags, admin_level, use_cache, city_name))
     if repo is None:
         raise ValueError("repo should be given when fake_city=True.")
     tables = DATA / repo / "tables"
     return tuple(gpd.read_parquet(tables / f"{name}.parquet")
-                 for name in ("df_osm", "df_streets", "df_area"))
+                 for name in ("df_osm", "df_street", "df_area"))

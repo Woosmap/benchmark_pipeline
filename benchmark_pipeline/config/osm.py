@@ -1,4 +1,6 @@
 # OSM Infos colonnes
+DESAMBIGUIOUS_NAME = False
+
 CATEGORIES = {
     "amenity": ["cafe", "restaurant", "bar", "pub"],
     "tourism": ["hotel"],
@@ -35,4 +37,4 @@ BOW_INCLUDE_NAMES = False     # add the name of the POI
 CUISINE_PREFER = "regional"   # "regional": 'japanese;bowl;poke' -> 'japanese'; "dish": -> 'bowl'
 CUISINE_KEEP_VENUE = False    # True accepts venue words ('coffee_shop', 'bar') as a fallback cuisine
 
-USE_CACHE = False             # True rereads data/pois/pois_osm_<bbox>.parquet instead of querying OSM again
+USE_CACHE = True             # True rereads osm_data/<city>/raw_<key>.parquet (POIs, streets, areas) instead of extracting them again

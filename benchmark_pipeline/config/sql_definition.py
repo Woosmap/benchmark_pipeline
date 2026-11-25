@@ -5,8 +5,8 @@ LIST_TEMPLATE = ['make_question_area_border',
                  'make_question_point_towards', 'make_question_street_along',
                  'make_question_street_cross']
 
-DISTANCE_MAX = 1000 #en mètres
-DISTANCE_STREET_MAX = 50
+DISTANCE_MAX = 1000 #en mètres distance max à laqueelle on accepte de dire que c'est proche
+DISTANCE_STREET_MAX = 50 #distance max entre un point et le point de la rue le plus proche de lui pour dire que ce point est le long de la rue 
 
 
 #SQL DEFINITION FUNCTION

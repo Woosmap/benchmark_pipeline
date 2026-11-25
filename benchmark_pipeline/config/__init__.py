@@ -5,3 +5,4 @@ from .osm import *
 from .sql_definition import *
 from .generation import *
 from .multihop import *
+from .relational import *

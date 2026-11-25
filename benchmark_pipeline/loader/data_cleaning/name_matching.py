@@ -55,7 +55,8 @@ def name_filtering_poi(df_osm, key):
         DataFrame: Kept rows sorted by index.
     """
     def normaliser(s):
-        s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+        # drops only the accents: an ASCII encoding would turn every non-Latin name (東扇島) into ""
+        s = "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
         return " ".join(s.lower().split())
 
     df_osm = df_osm.copy()
@@ -88,6 +89,13 @@ def drop_removed_rows(df_all, df_all_filtered, df_osm, df_street, df_area):
         drop(df_street, "street_id", "street"),
         drop(df_area, "area_id", "area"),
     )
+
+def make_df_all(df_osm, df_street, df_area):
+    return pd.concat([
+            df_area.rename(columns={"area_id": "id", "area_name": "name"}).assign(source="area"),
+            df_street.rename(columns={"street_id": "id", "street_name": "name"}).assign(source="street"),
+            df_osm.rename(columns={"poi_id": "id", "poi_name": "name"}).assign(source="poi"),
+        ], ignore_index=True)
 
 def name_matching_cleaning(df_osm, df_street, df_area):
     """Make names unique within and across the POI, street and area tables.

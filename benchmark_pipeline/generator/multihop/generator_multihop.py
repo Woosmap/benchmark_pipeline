@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
 
@@ -10,7 +12,6 @@ from benchmark_pipeline.config import (
 )
 from benchmark_pipeline.utils.dicts_to_lists import dicts_to_lists
 from benchmark_pipeline.generator.multihop.make_multihop_text import make_text_multihop
-from benchmark_pipeline.path import DATA
 
 
 def keep_questions(question_index, max_questions, random_generator):
@@ -101,7 +102,7 @@ def make_multihop_questions(
 
 def make_multihop_dataset(
     nb_seed_question: int,
-    repo: str,
+    save_dir: Path,
     template: dict[int, int],
     df_question: pd.DataFrame,
     df_osm: pd.DataFrame,
@@ -133,12 +134,11 @@ def make_multihop_dataset(
     Samples ``nb_seed_question`` starting questions from ``df_question`` and, for each
     one, generates a chain of multi-hop questions following ``template``.
     The resulting chains are then turned into natural-language text and
-    written, together with the updated question table, to
-    ``DATA / repo / "multihop"``.
+    written, together with the updated question table, to ``save_dir``.
 
     Args:
         nb_seed_question: Number of starting questions sampled from ``df_question``.
-        repo: repo name for registration
+        save_dir: Folder of the two output files, e.g. ``DATA / city / "question" / "test" / "multihop"``.
         template: Generation template mapping each hop depth to the value
             used by ``make_multihop_questions`` at that depth.
         df_question: Single-hop question table; it is enriched by each call
@@ -158,9 +158,9 @@ def make_multihop_dataset(
         corridor_m, half_width: Corridor of between and cone of towards, around the answers and a second POI.
 
     Returns:
-        None. Writes two files to ``DATA / repo / "multihop"``:
-        ``df_question.parquet`` (restricted to ``MULTIHOP_COLUMNS``) and
-        ``df_multihop_15_hops.parquet``.
+        None. Writes two files to ``save_dir``: ``df_multihop.parquet``, the multihop questions, and
+        ``df_nodes.parquet``, the questions their nodes refer to (``df_question`` plus the questions created
+        by the hops, restricted to ``MULTIHOP_COLUMNS``).
     """
     df_multihop: pd.DataFrame | None = None
     for id_start in df_question.sample(nb_seed_question, random_state=seed).index:
@@ -177,7 +177,7 @@ def make_multihop_dataset(
         )
     df_multihop = make_text_multihop(df_multihop, df_question, feature_cols)
 
-    multihop_dir = DATA / repo / "multihop"
-    multihop_dir.mkdir(parents=True, exist_ok=True)
-    dicts_to_lists(df_question[MULTIHOP_COLUMNS]).to_parquet(multihop_dir / "df_question.parquet")
-    dicts_to_lists(df_multihop).to_parquet(multihop_dir / "df_multihop.parquet")
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    dicts_to_lists(df_question[MULTIHOP_COLUMNS]).to_parquet(save_dir / "df_nodes.parquet")
+    dicts_to_lists(df_multihop).to_parquet(save_dir / "df_multihop.parquet")
